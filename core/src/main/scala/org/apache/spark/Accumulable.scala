@@ -159,6 +159,8 @@ class Accumulable[R, T] private (
   }
 
   override def toString: String = if (newAcc._value == null) "null" else newAcc._value.toString
+
+  def compact(): Unit = value_ = param.compact(value_)
 }
 
 
@@ -196,6 +198,8 @@ trait AccumulableParam[R, T] extends Serializable {
    * example, if R was a vector of N dimensions, this would return a vector of N zeroes.
    */
   def zero(initialValue: R): R
+
+  def compact(t: R): R = t
 }
 
 

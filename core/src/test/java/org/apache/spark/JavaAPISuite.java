@@ -1419,6 +1419,9 @@ public class JavaAPISuite implements Serializable {
       public Float zero(Float initialValue) {
         return 0.0f;
       }
+
+      @Override
+      public Float compact(Float r) { return r; }
     };
 
     final Accumulator<Float> floatAccum = sc.accumulator(10.0f, floatAccumulatorParam);

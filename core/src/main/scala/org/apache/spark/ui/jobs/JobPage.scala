@@ -207,7 +207,7 @@ private[ui] class JobPage(parent: JobsTab) extends WebUIPage("job") {
         // This could be empty if the JobProgressListener hasn't received information about the
         // stage or if the stage information has been garbage collected
         listener.stageIdToInfo.getOrElse(stageId,
-          new StageInfo(stageId, 0, "Unknown", 0, Seq.empty, Seq.empty, "Unknown"))
+          new StageInfo(stageId, 0, "Unknown", 0, None, Seq.empty, Seq.empty, "Unknown"))
       }
 
       val activeStages = Buffer[StageInfo]()
@@ -323,6 +323,8 @@ private[ui] class JobPage(parent: JobsTab) extends WebUIPage("job") {
 
       content ++= UIUtils.showDagVizForJob(
         jobId, operationGraphListener.getOperationGraphForJob(jobId))
+
+      content ++= UIUtils.showExecVizForJob(parent.basePath, jobId)
 
       if (shouldShowActiveStages) {
         content ++= <h4 id="active">Active Stages ({activeStages.size})</h4> ++

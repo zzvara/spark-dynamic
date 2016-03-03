@@ -21,6 +21,8 @@ import java.io.InputStream
 import java.util.concurrent.LinkedBlockingQueue
 import javax.annotation.concurrent.GuardedBy
 
+import org.apache.spark.status.api.v1.BlockFetchInfo
+
 import scala.collection.mutable.{ArrayBuffer, HashSet, Queue}
 import scala.util.control.NonFatal
 
@@ -143,12 +145,16 @@ final class ShuffleBlockFetcherIterator(
     while (iter.hasNext) {
       val result = iter.next()
       result match {
-        case SuccessFetchResult(_, address, _, buf, _) =>
+        case SuccessFetchResult(blockId, address, _, buf, _) => {
           if (address != blockManager.blockManagerId) {
             shuffleMetrics.incRemoteBytesRead(buf.size)
             shuffleMetrics.incRemoteBlocksFetched(1)
+            shuffleMetrics.addBlockFetch(
+              new BlockFetchInfo(blockId, buf.size,
+                                 Some(address.executorId), Some(address.host)))
           }
           buf.release()
+        }
         case _ =>
       }
     }
@@ -258,6 +264,7 @@ final class ShuffleBlockFetcherIterator(
         val buf = blockManager.getBlockData(blockId)
         shuffleMetrics.incLocalBlocksFetched(1)
         shuffleMetrics.incLocalBytesRead(buf.size)
+        shuffleMetrics.addBlockFetch(new BlockFetchInfo(blockId, buf.size()))
         buf.retain()
         results.put(new SuccessFetchResult(blockId, blockManager.blockManagerId, 0, buf, false))
       } catch {
@@ -312,16 +319,18 @@ final class ShuffleBlockFetcherIterator(
     shuffleMetrics.incFetchWaitTime(stopFetchWait - startFetchWait)
 
     result match {
-      case SuccessFetchResult(_, address, size, buf, isNetworkReqDone) =>
+      case SuccessFetchResult(blockId, address, size, buf, isNetworkReqDone) => {
         if (address != blockManager.blockManagerId) {
           shuffleMetrics.incRemoteBytesRead(buf.size)
           shuffleMetrics.incRemoteBlocksFetched(1)
+          shuffleMetrics.addBlockFetch(new BlockFetchInfo(blockId, buf.size()))
         }
         bytesInFlight -= size
         if (isNetworkReqDone) {
           reqsInFlight -= 1
           logDebug("Number of requests in flight " + reqsInFlight)
         }
+      }
       case _ =>
     }
     // Send fetch requests up to maxBytesInFlight

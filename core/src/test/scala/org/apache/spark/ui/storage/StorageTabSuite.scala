@@ -56,7 +56,7 @@ class StorageTabSuite extends SparkFunSuite with LocalSparkContext with BeforeAn
     assert(storageListener.rddInfoList.isEmpty)
 
     // 2 RDDs are known, but none are cached
-    val stageInfo0 = new StageInfo(0, 0, "0", 100, Seq(rddInfo0, rddInfo1), Seq.empty, "details")
+    val stageInfo0 = new StageInfo(0, 0, "0", 100, None, Seq(rddInfo0, rddInfo1), Seq.empty, "details")
     bus.postToAll(SparkListenerStageSubmitted(stageInfo0))
     assert(storageListener._rddInfoMap.size === 2)
     assert(storageListener.rddInfoList.isEmpty)
@@ -67,7 +67,7 @@ class StorageTabSuite extends SparkFunSuite with LocalSparkContext with BeforeAn
     rddInfo2Cached.numCachedPartitions = 1
     rddInfo3Cached.numCachedPartitions = 1
     val stageInfo1 = new StageInfo(
-      1, 0, "0", 100, Seq(rddInfo2Cached, rddInfo3Cached), Seq.empty, "details")
+      1, 0, "0", 100, None, Seq(rddInfo2Cached, rddInfo3Cached), Seq.empty, "details")
     bus.postToAll(SparkListenerStageSubmitted(stageInfo1))
     assert(storageListener._rddInfoMap.size === 4)
     assert(storageListener.rddInfoList.size === 2)
@@ -75,7 +75,7 @@ class StorageTabSuite extends SparkFunSuite with LocalSparkContext with BeforeAn
     // Submitting RDDInfos with duplicate IDs does nothing
     val rddInfo0Cached = new RDDInfo(0, "freedom", 100, StorageLevel.MEMORY_ONLY, Seq(10))
     rddInfo0Cached.numCachedPartitions = 1
-    val stageInfo0Cached = new StageInfo(0, 0, "0", 100, Seq(rddInfo0), Seq.empty, "details")
+    val stageInfo0Cached = new StageInfo(0, 0, "0", 100, None, Seq(rddInfo0), Seq.empty, "details")
     bus.postToAll(SparkListenerStageSubmitted(stageInfo0Cached))
     assert(storageListener._rddInfoMap.size === 4)
     assert(storageListener.rddInfoList.size === 2)
@@ -92,7 +92,7 @@ class StorageTabSuite extends SparkFunSuite with LocalSparkContext with BeforeAn
     rddInfo0Cached.numCachedPartitions = 1
     rddInfo1Cached.numCachedPartitions = 1
     val stageInfo0 = new StageInfo(
-      0, 0, "0", 100, Seq(rddInfo0Cached, rddInfo1Cached), Seq.empty, "details")
+      0, 0, "0", 100, None, Seq(rddInfo0Cached, rddInfo1Cached), Seq.empty, "details")
     bus.postToAll(SparkListenerStageSubmitted(stageInfo0))
     assert(storageListener._rddInfoMap.size === 2)
     assert(storageListener.rddInfoList.size === 2)
@@ -112,7 +112,7 @@ class StorageTabSuite extends SparkFunSuite with LocalSparkContext with BeforeAn
     val myRddInfo1 = rddInfo1
     val myRddInfo2 = rddInfo2
     val stageInfo0 = new StageInfo(
-      0, 0, "0", 100, Seq(myRddInfo0, myRddInfo1, myRddInfo2), Seq.empty, "details")
+      0, 0, "0", 100, None, Seq(myRddInfo0, myRddInfo1, myRddInfo2), Seq.empty, "details")
     bus.postToAll(SparkListenerBlockManagerAdded(1L, bm1, 1000L))
     bus.postToAll(SparkListenerStageSubmitted(stageInfo0))
     assert(storageListener._rddInfoMap.size === 3)
@@ -161,8 +161,8 @@ class StorageTabSuite extends SparkFunSuite with LocalSparkContext with BeforeAn
 
     val rddInfo0 = new RDDInfo(0, "rdd0", 1, memOnly, Seq(4))
     val rddInfo1 = new RDDInfo(1, "rdd1", 1, memOnly, Seq(4))
-    val stageInfo0 = new StageInfo(0, 0, "stage0", 1, Seq(rddInfo0), Seq.empty, "details")
-    val stageInfo1 = new StageInfo(1, 0, "stage1", 1, Seq(rddInfo1), Seq.empty, "details")
+    val stageInfo0 = new StageInfo(0, 0, "stage0", 1, None, Seq(rddInfo0), Seq.empty, "details")
+    val stageInfo1 = new StageInfo(1, 0, "stage1", 1, None, Seq(rddInfo1), Seq.empty, "details")
     val blockUpdateInfos1 = Seq(BlockUpdatedInfo(bm1, RDDBlockId(0, 1), memOnly, 100L, 0L))
     val blockUpdateInfos2 = Seq(BlockUpdatedInfo(bm1, RDDBlockId(1, 1), memOnly, 200L, 0L))
     bus.postToAll(SparkListenerBlockManagerAdded(1L, bm1, 1000L))

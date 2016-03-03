@@ -108,6 +108,8 @@ private[v1] object AllStagesResource {
       inputRecords = stageUiData.inputRecords,
       outputBytes = stageUiData.outputBytes,
       outputRecords = stageUiData.outputRecords,
+      rddData = stageInfo.rddInfos,
+      shuffleId = stageInfo.shuffleId,
       shuffleReadBytes = stageUiData.shuffleReadTotalBytes,
       shuffleReadRecords = stageUiData.shuffleReadRecords,
       shuffleWriteBytes = stageUiData.shuffleWriteBytes,
@@ -140,7 +142,10 @@ private[v1] object AllStagesResource {
       taskId = uiData.taskInfo.taskId,
       index = uiData.taskInfo.index,
       attempt = uiData.taskInfo.attemptNumber,
+      status = uiData.taskInfo.status,
+      stageId = uiData.stageId,
       launchTime = new Date(uiData.taskInfo.launchTime),
+      finishTime = new Date(uiData.taskInfo.finishTime),
       executorId = uiData.taskInfo.executorId,
       host = uiData.taskInfo.host,
       taskLocality = uiData.taskInfo.taskLocality.toString(),
@@ -249,6 +254,7 @@ private[v1] object AllStagesResource {
       diskBytesSpilled = internal.diskBytesSpilled,
       inputMetrics = convertInputMetrics(internal.inputMetrics),
       outputMetrics = convertOutputMetrics(internal.outputMetrics),
+      blockFetchInfos = internal.blockFetchInfos,
       shuffleReadMetrics = convertShuffleReadMetrics(internal.shuffleReadMetrics),
       shuffleWriteMetrics = convertShuffleWriteMetrics(internal.shuffleWriteMetrics)
     )
@@ -271,7 +277,9 @@ private[v1] object AllStagesResource {
   def convertShuffleReadMetrics(internal: InternalShuffleReadMetrics): ShuffleReadMetrics = {
     new ShuffleReadMetrics(
       remoteBlocksFetched = internal.remoteBlocksFetched,
+      remoteBlockFetchInfos = internal.remoteBlockFetchInfos,
       localBlocksFetched = internal.localBlocksFetched,
+      localBlockFetchInfos = internal.localBlockFetchInfos,
       fetchWaitTime = internal.fetchWaitTime,
       remoteBytesRead = internal.remoteBytesRead,
       localBytesRead = internal.localBytesRead,
@@ -283,7 +291,8 @@ private[v1] object AllStagesResource {
     new ShuffleWriteMetrics(
       bytesWritten = internal.bytesWritten,
       writeTime = internal.writeTime,
-      recordsWritten = internal.recordsWritten
+      recordsWritten = internal.recordsWritten,
+      dataCharacteristics = internal.dataCharacteristics
     )
   }
 }

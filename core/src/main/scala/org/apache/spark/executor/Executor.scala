@@ -321,6 +321,7 @@ private[spark] class Executor(
         task.metrics.setExecutorRunTime((taskFinish - taskStart) - task.executorDeserializeTime)
         task.metrics.setJvmGCTime(computeTotalGcTime() - startGCTime)
         task.metrics.setResultSerializationTime(afterSerialization - beforeSerialization)
+        task.metrics.shuffleWriteMetrics.foreach(_.compact())
 
         // Note: accumulator updates must be collected after TaskMetrics is updated
         val accumUpdates = task.collectAccumulatorUpdates()

@@ -332,7 +332,8 @@ class JobProgressListener(conf: SparkConf) extends SparkListener with Logging {
         new StageUIData
       })
       stageData.numActiveTasks += 1
-      stageData.taskData.put(taskInfo.taskId, TaskUIData(taskInfo, Some(metrics)))
+      stageData.taskData.put(taskInfo.taskId,
+        TaskUIData(taskStart.stageId, taskInfo, Some(metrics)))
     }
     for (
       activeJobsDependentOnStage <- stageIdToActiveJobIds.get(taskStart.stageId);
@@ -400,7 +401,8 @@ class JobProgressListener(conf: SparkConf) extends SparkListener with Logging {
         updateAggregateMetrics(stageData, info.executorId, m, oldMetrics)
       }
 
-      val taskData = stageData.taskData.getOrElseUpdate(info.taskId, TaskUIData(info, None))
+      val taskData = stageData.taskData.getOrElseUpdate(info.taskId,
+        TaskUIData(taskEnd.stageId, info, None))
       taskData.updateTaskInfo(info)
       taskData.updateTaskMetrics(taskMetrics)
       taskData.errorMessage = errorMessage

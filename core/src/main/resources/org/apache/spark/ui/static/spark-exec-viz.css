@@ -1,0 +1,737 @@
+*{
+    margin: 0;
+    padding: 0;
+}
+
+HTML, BODY{
+    color: #2E2E2E;
+    width: 100%;
+    height: 100%;
+    font-family: "Segoe-UI", sans-serif;
+    background-color: #f4f4f4;
+    position: relative;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    line-height: normal !important;
+    font-size: 1em !important;
+}
+
+BODY{
+    transition: .4s ease-in;
+}
+
+BODY > *{
+    position: absolute;
+    transform-style: preserve-3d;
+    backface-visibility: visible;
+}
+
+#Prototypes{
+    display: none;
+}
+
+.Main{
+    top: 0;
+    right: 0;
+}
+
+BUTTON, A, A:active, A:focus, BUTTON:active, BUTTON:focus{
+    border: none;
+    background-color: transparent;
+    -webkit-appearance: none;
+    outline-width: 0;
+}
+
+NAV.Main {
+    z-index: 1;
+}
+
+NAV.Main BUTTON{
+    padding: 1em;
+    top: 0;
+    right: 0;
+    background-color: #2E2E2E;
+    color: white;
+    border: none;
+    text-transform: uppercase;
+    position: absolute;
+    transition: .4s ease-out;
+}
+
+NAV.Main BUTTON:hover{
+    transition: .4s ease-in;
+    color: black;
+    background-color: transparent;
+}
+
+UL, LI{
+    list-style: none;
+}
+
+.Wrapper.Runtime{
+    top: 0;
+    left: 0;
+    width: 15%;
+    height: 25%;
+    position: absolute;
+    perspective-origin: 50% 50%;
+    -webkit-perspective-origin: 50% 50%;
+    perspective: 800px;
+    -webkit-perspective: 800px;
+    z-index: 1;
+}
+
+#Runtime{
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    transform-origin: 0% 0%;
+    transform: rotateY(30deg);
+    transition: .4s cubic-bezier(0.500, 0.250, 0.100, 1.345);
+    opacity: .8;
+    z-index: 5000;
+    background-color: #f4f4f4;
+}
+
+#Runtime:hover{
+    transform: rotateY(0deg);
+    opacity: 1;
+}
+
+
+#Runtime .Current.Time{
+    position: absolute;
+    top: 2em;
+    left: 2em;
+}
+
+#Runtime .Current.Time .Title{
+    text-transform: uppercase;
+    color: #555555;
+    font-size: .8em;
+}
+
+#Runtime .Current.Time .Value{
+    font-size: 1.5em;
+}
+
+#Runtime UL.Counters{
+    top: 4em;
+    left: 2em;
+    position: absolute;
+}
+
+#Runtime UL.Counters LI{
+    color: #555555;
+}
+
+#Runtime UL.Counters LI SPAN{
+    width: 1.5em;
+    display: inline-block;
+    text-align: center;
+    font-size: 1.2em;
+    color: #323232;
+}
+
+.Application{
+    bottom: 0;
+    left: 0;
+    height: 10em;
+    width: 30%;
+    z-index: 1;
+    display: none;
+}
+
+.Application UL.Attributes{
+    position: absolute;
+    bottom: 1em;
+    padding-top: 1em;
+    width: 100%;
+    height: 4.5em;
+    transition: .4s cubic-bezier(0.500, 0.250, 0.100, 1.345);
+}
+
+.Application UL.Attributes:hover{
+    height: 10em;
+    background-color: #ebebeb;
+    bottom: 0;
+}
+
+.Application UL.Attributes LI{
+    margin-left: 1em;
+}
+
+.Application UL.Attributes LI.Border{
+    margin-top: 1em;
+}
+
+.Application UL.Attributes LI SPAN:nth-child(1){
+    width: 20%;
+    float: left;
+    display: inline-block;
+    text-align: right;
+    padding-right: .5em;
+    text-transform: uppercase;
+    font-size: .7em;
+    color: #555555;
+    padding-top: .25em;
+}
+
+.Application UL.Attributes LI SPAN:nth-child(2){
+    font-size: 0.8em;
+    color: #2E2E2E;
+}
+
+#Dropzone{
+    bottom: 0;
+    right: 0;
+    width: 20%;
+    height: 2em;
+    padding-top:1em;
+    text-align: center;
+    background-color: #c4d0cd;
+    text-transform: uppercase;
+    opacity: .5;
+    transition: .4s cubic-bezier(0.500, 0.250, 0.100, 1.345);
+    z-index: 1;
+}
+
+#Dropzone:hover{
+    height: 5em;
+    padding-top: 4em;
+    opacity: 1;
+}
+
+#Dropzone.Active{
+    background-color: #d0c4c0;
+}
+
+.Wrapper.Settings{
+    top: 25%;
+    height: 50%;
+    right: 0;
+    opacity: .8;
+    perspective-origin: 50% 50%;
+    -webkit-perspective-origin: 50% 50%;
+    perspective: 800px;
+    -webkit-perspective: 800px;
+    z-index: 1;
+}
+
+#Settings{
+    right: 1em;
+    height: 100%;
+    width: 9em;
+    transform-origin: 100% 100%;
+    transform: rotateY(-20deg);
+    transition: .4s cubic-bezier(0.500, 0.250, 0.100, 1.345);
+}
+
+#Settings:hover{
+    transform: rotateY(0deg);
+}
+
+#Settings UL{
+    width: 7em;
+    height: 100%;
+    transition: .4s cubic-bezier(0.500, 0.250, 0.100, 1.345);
+    opacity: .5;
+}
+
+#Settings UL:hover{
+    opacity: 1;
+}
+
+#Settings LI{
+    display: block;
+    width: 7em;
+}
+
+#Settings LI:hover BUTTON{
+    padding-right: 15em;
+    margin-left: -5em;
+    width: 24em;
+}
+
+#Settings LI BUTTON{
+    transition: .8s cubic-bezier(0.500, 0.250, 0.100, 1.345);
+    color: #323232;
+    text-transform: uppercase;
+    text-align: center;
+    padding: .5em 1em .5em 1em;
+    margin-top: 1em;
+    width: 100%;
+}
+
+#Settings LI BUTTON.Edge.Scale SPAN{
+    font-size: .6em;
+}
+
+BODY.Stopped > SVG{
+    transition: .4s ease-in;
+    -webkit-filter: grayscale(60%) blur(1px);
+}
+
+/**
+ *  ----------------------------------------------------------
+ *  --- GRAPH STYLE
+ *  ---
+ *  --- #D93240 #638CA6 #BFD4D9 #0F5959 #17A697
+ *  ----------------------------------------------------------
+ */
+
+svg#Graph {
+    display: none;
+}
+
+svg#Table {
+    display: block;
+    position: absolute;
+}
+
+#tableSvgContainer{
+    display: block;
+    width: auto;
+    height: auto;
+    overflow: visible;
+}
+
+
+#graphSvgContainer{
+    display: none;
+}
+
+.marker {
+    stroke: #0F5959;
+    fill: #0F5959;
+    background-color: #0F5959;
+}
+
+.marker.path {
+    background-color: #0F5959;
+    stroke: #0F5959;
+    fill: #0F5959;
+}
+
+.node.circle {
+    fill: #0F5959;
+    color: white;
+}
+
+.task.container {
+    color: white;
+    width: 4em;
+    height: 4em;
+    position: fixed;
+}
+
+.link.path {
+    marker-end: url(#graphMarker);
+    fill: none;
+    stroke: #0F5959;
+    color: #0F5959;
+}
+
+.link.text {
+    font-size: 1.5em;
+    padding: .5em;
+    padding-bottom: 1em;
+    margin-bottom: 1em;
+    top: 5em;
+    position: absolute;
+    fill: #D93240;
+}
+
+.link.rect {
+    fill: none;
+    fill-opacity: 0;
+}
+
+.hull.info.rect{
+    fill: none;
+    fill-opacity: 0;
+}
+
+.hull.info.text{
+    padding: 1em;
+    margin: .5em;
+}
+
+.tableRect {
+    fill: #f4f4f4;
+    color: white;
+    fill-opacity: 0.2;
+}
+
+.tableLink.line {
+    marker-end: url(#tableMarker);
+    stroke: #0F5959;
+    transition: .4s linear;
+}
+
+#tableSvgContainer.Remote .tableLink.line.Local{
+    display: none;
+}
+
+.tableLinkLabel.text {
+    font-size: 1em;
+    fill: #f4f4f4;
+}
+
+.tableLinkLabel.rect {
+    fill: #0F5959;
+}
+
+.tableLink.line.Hide {
+    stroke-opacity: 0.2;
+    stroke: grey;
+}
+
+.tableLink.line.Show {
+    stroke-opacity: 1;
+    stroke: #0F5959;
+}
+
+.task.rect {
+    fill: #638CA6;
+    color: white;
+    fill-opacity: 1;
+}
+
+UL.task.list{
+    margin-top: -2.5em;
+    padding: 0;
+    height: 6.2em;
+    width: 8em;
+    margin-left: -2.4em;
+    /*overflow-y: hidden;*/
+    overflow-y: scroll;
+    overflow-x: visible;
+    list-style-type: none;
+    color: white;
+    position: fixed;
+    text-align: center;
+    transition: .4s cubic-bezier(0.500, 0.250, 0.100, 1.345);
+}
+
+/*
+UL.task.list:hover{
+  height: 12.4em;
+}
+*/
+
+UL LI.Task.Graph.Element{
+    width: 7em;
+    background-color: #0F5959;
+    height: 2em;
+    border-bottom: .1em solid #f4f4f4;
+    transition: .4s ease-out;
+}
+
+UL LI.Task.Graph.Element.Finished{
+    filter: grayscale(0.8);
+}
+
+UL LI.Task.Graph.Element:hover{
+    background-color: #17A697;
+}
+
+UL LI.Task.Graph.Element > DIV{
+    width: 7em;
+    height: 2em;
+}
+
+LI.Task.Graph.Element > *{
+    font-size: .5em;
+}
+
+LI.Task.Graph.Element .Header{
+    width: 14em;
+    position: relative;
+    float: left;
+    height: 2em;
+}
+
+LI.Task.Graph.Element .Header .Stage{
+    position: absolute;
+    left: .4em;
+    top: 1.6em;
+}
+
+LI.Task.Graph.Element .Header .Stage SPAN:nth-child(1),
+LI.Task.Graph.Element .Header .Partition SPAN:nth-child(1){
+    font-size: .8em;
+    opacity: .8;
+}
+
+LI.Task.Graph.Element .Header .Stage SPAN:nth-child(2),
+LI.Task.Graph.Element .Header .Partition SPAN:nth-child(2){
+    font-size: 1.1em;
+}
+
+LI.Task.Graph.Element .Header .Partition{
+    position: absolute;
+    top: 2.7em;
+    left: .4em;
+}
+
+LI.Task.Graph.Element .Header .Runtime{
+    position: absolute;
+    top: .2em;
+    right: .4em;
+    font-size: 1.8em;
+    text-align: right;
+}
+
+LI.Task.Graph.Element .Header .Name{
+    position: absolute;
+    top: .3em;
+    left: 1em;
+    width: 8.5em;
+    font-size: 1.2em;
+    text-align: center;
+}
+
+LI.Task.Graph.Element .Header .Creation.Site{
+    position: absolute;
+    top: 3.8em;
+    right: .3em;
+    text-align: right;
+    font-size: .8em;
+}
+
+LI.Task.Graph.Element .Body{
+    display:none;
+}
+
+LI.Task.Graph.Element > *{
+    font-size: .5em;
+}
+
+LI.Task.Table.Element{
+    transition: .4s ease-out;
+    font-size: 1.2em;
+    color: white;
+}
+
+LI.Task.Table.Element:not(.Finished){
+    background-color: #f4f4f4 !important;
+    color: black;
+    border: 0.2em solid;
+    margin: -0.1em;
+}
+
+LI.Task.Table.Element > DIV{
+    position: fixed;
+    pointer-events: none;
+}
+
+LI.Task.Table.Element .Header{
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+LI.Task.Table.Element.Finished{
+
+}
+
+LI.Task.Table.Element > DIV{
+    width: 7em;
+    height: 60px;
+    position: fixed;
+}
+
+LI.Task.Table.Element .Header{
+    width: 9em;
+    position: relative;
+    float: left;
+    height: 2em;
+}
+
+LI.Task.Table.Element .Header .Stage{
+    font-weight: normal;
+    position: absolute;
+    left: .2em;
+    top: 0em;
+    font-size: 1.6em;
+    display: none;
+}
+
+LI.Task.Table.Element .Header .Partition{
+    position: absolute;
+    left: .2em;
+    top: 1.8em;
+    font-size: 1em;
+}
+
+LI.Task.Table.Element .Header .Stage SPAN:nth-child(1),
+LI.Task.Table.Element .Header .Partition SPAN:nth-child(1){
+    font-size: .4em;
+    opacity: .8;
+}
+
+LI.Task.Table.Element .Header .Stage SPAN:nth-child(2),
+LI.Task.Table.Element .Header .Partition SPAN:nth-child(2){
+    font-size: .6em;
+}
+
+LI.Task.Table.Element .Header .Runtime{
+    position: absolute;
+    top: .2em;
+    right: .8em;
+    font-size: 1em;
+    text-align: right;
+}
+
+LI.Task.Table.Element .Header .Name{
+    position: absolute;
+    top: 1em;
+    left: 2em;
+    width: 4em;
+    font-size: 1em;
+    text-align: center;
+}
+
+LI.Task.Table.Element .Header .Creation.Site{
+    position: absolute;
+    top: 3.8em;
+    right: .3em;
+    text-align: right;
+    font-size: .8em;
+    display: none;
+}
+
+LI.Task.Table.Element .Body{
+    position: absolute;
+    margin: 0 auto;
+    height: 60px;
+    width: 160px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    z-index: 50000;
+}
+
+.Task.Table.Element .Body UL{
+    overflow: visible;
+    margin: 0 auto;
+    position: relative;
+    text-align: center;
+    display: -webkit-box;
+    -webkit-box-pack: center;
+    -webkit-box-align: center;
+    width: auto;
+    transition: .4s ease-in;
+    height: 10px;
+    opacity: 0;
+}
+
+.Task.Table.Element .Body.Open UL{
+    overflow: visible;
+    height: 60px;
+    opacity: 1;
+}
+
+.Task.Table.Element .Body UL LI{
+    float: left;
+    width: auto;
+    height: 40px;
+    padding: 10px 0 10px 0;
+    position: relative;
+    display: inline-block;
+    background-color: #638CA6;
+}
+
+.Task.Table.Element .Body UL LI:last-child{
+    margin-right: .5em;
+}
+
+.Task.Table.Element .Body UL LI .Name{
+    float: left;
+    background-color: #BFD4D9;
+    padding: .2em;
+    font-size: .9em;
+    color: black;
+    font-family: monospace;
+}
+
+.Task.Table.Element .Body UL LI:first-of-type .Name{
+    margin-left: .5em;
+    display:inline-block;
+}
+
+.Task.Table.Element .Body UL LI:last-of-type .Name{
+    margin-right: .5em;
+    display:inline-block;
+}
+
+.Task.Table.Element .Body UL LI .Connector{
+    float: left;
+    width: 1em;
+    height: .2em;
+    margin-top: .5em;
+    background-color: #BFD4D9;
+}
+
+.Task.Table.Element .Body UL LI:last-of-type .Connector{
+    display: none;
+}
+
+.foreignObject {
+    overflow-x: visible;
+    overflow-y: visible;
+}
+
+.tableForeignobj {
+    pointer-events: none;
+}
+
+.stageLabelsDiv {
+    width: 7em;
+    height: 2em;
+    position: fixed;
+}
+
+.Histogram {
+    opacity: 0;
+    width: 160px;
+    height: 60px;
+    top: 0;
+    left: 0;
+    position: absolute;
+    background-color: #f4f4f4;
+    border-left: 2px solid rgb(15, 89, 89);
+    border-right: 2px solid rgb(15, 89, 89);
+}
+
+.Histogram.Show{
+    opacity: 1;
+}
+
+.Histogram .Bar{
+    height: 15px;
+    position: relative;
+}
+
+.Histogram .Bar .Key{
+    text-align: left;
+    font-size: .8em;
+    display: block;
+    position: absolute;
+    line-height: 1.2em;
+    height: 15px;
+}
+
+.Histogram .Bar .Value{
+    text-align: right;
+    float: right;
+    position: absolute;
+    width: 160px;
+    left: 0;
+    font-size: .7em;
+    line-height: 1.2em;
+}

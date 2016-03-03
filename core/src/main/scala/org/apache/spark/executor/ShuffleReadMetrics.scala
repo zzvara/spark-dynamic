@@ -17,9 +17,14 @@
 
 package org.apache.spark.executor
 
+import org.apache.spark.status.api.v1.BlockFetchInfo
+import org.apache.spark.storage.BlockResult
+import org.apache.spark.{Logging, Accumulator, InternalAccumulator}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.util.LongAccumulator
 
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * :: DeveloperApi ::
@@ -29,7 +34,9 @@ import org.apache.spark.util.LongAccumulator
 @DeveloperApi
 class ShuffleReadMetrics private[spark] () extends Serializable {
   private[executor] val _remoteBlocksFetched = new LongAccumulator
+  private[executor] val _remoteBlockFetchInfos = new Accumulator[Seq[BlockFetchInfo]]
   private[executor] val _localBlocksFetched = new LongAccumulator
+  private[executor] val _localBlockFetchInfos = new Accumulator[Seq[BlockFetchInfo]]
   private[executor] val _remoteBytesRead = new LongAccumulator
   private[executor] val _localBytesRead = new LongAccumulator
   private[executor] val _fetchWaitTime = new LongAccumulator
@@ -41,9 +48,19 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   def remoteBlocksFetched: Long = _remoteBlocksFetched.sum
 
   /**
+    * @todo What?
+    */
+  def remoteBlockFetchInfos(): Seq[BlockFetchInfo] = _remoteBlockFetchInfos.localValue
+
+  /**
    * Number of local blocks fetched in this shuffle by this task.
    */
   def localBlocksFetched: Long = _localBlocksFetched.sum
+
+  /**
+    * @todo What?
+    */
+  def localBlockFetchInfos(): Seq[BlockFetchInfo] = _localBlockFetchInfos.localValue
 
   /**
    * Total number of remote bytes read from the shuffle by this task.
@@ -90,10 +107,15 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   private[spark] def setLocalBytesRead(v: Long): Unit = _localBytesRead.setValue(v)
   private[spark] def setFetchWaitTime(v: Long): Unit = _fetchWaitTime.setValue(v)
   private[spark] def setRecordsRead(v: Long): Unit = _recordsRead.setValue(v)
+  private[spark] def setRemoteBlockFetchInfos(s: ArrayBuffer[BlockFetchInfo]): Unit =
+    _remoteBlockFetchInfos.merge(s)
+  private[spark] def setLocalBlockFetchInfos(s: ArrayBuffer[BlockFetchInfo]): Unit =
+    _localBlockFetchInfos.merge(s)
 
   /**
    * Resets the value of the current metrics (`this`) and and merges all the independent
    * [[TempShuffleReadMetrics]] into `this`.
+   * @todo Add support for block fetch infos.
    */
   private[spark] def setMergeValues(metrics: Seq[TempShuffleReadMetrics]): Unit = {
     _remoteBlocksFetched.setValue(0)

@@ -257,6 +257,7 @@ private[spark] object JsonProtocol {
     ("Stage ID" -> stageInfo.stageId) ~
     ("Stage Attempt ID" -> stageInfo.attemptId) ~
     ("Stage Name" -> stageInfo.name) ~
+    ("Shuffle ID" -> stageInfo.shuffleId) ~
     ("Number of Tasks" -> stageInfo.numTasks) ~
     ("RDD Info" -> rddInfo) ~
     ("Parent IDs" -> parentIds) ~
@@ -325,6 +326,9 @@ private[spark] object JsonProtocol {
 
   def taskMetricsToJson(taskMetrics: TaskMetrics): JValue = {
     val shuffleReadMetrics: JValue =
+    /**
+      * @todo Handle block fetch infos.
+      */
       ("Remote Blocks Fetched" -> taskMetrics.shuffleReadMetrics.remoteBlocksFetched) ~
         ("Local Blocks Fetched" -> taskMetrics.shuffleReadMetrics.localBlocksFetched) ~
         ("Fetch Wait Time" -> taskMetrics.shuffleReadMetrics.fetchWaitTime) ~
@@ -567,7 +571,7 @@ private[spark] object JsonProtocol {
     val stageInfos = Utils.jsonOption(json \ "Stage Infos")
       .map(_.extract[Seq[JValue]].map(stageInfoFromJson)).getOrElse {
         stageIds.map { id =>
-          new StageInfo(id, 0, "unknown", 0, Seq.empty, Seq.empty, "unknown")
+          new StageInfo(id, 0, "unknown", 0, None, Seq.empty, Seq.empty, "unknown")
         }
       }
     SparkListenerJobStart(jobId, submissionTime, stageInfos, properties)
@@ -661,6 +665,7 @@ private[spark] object JsonProtocol {
     val stageId = (json \ "Stage ID").extract[Int]
     val attemptId = (json \ "Stage Attempt ID").extractOpt[Int].getOrElse(0)
     val stageName = (json \ "Stage Name").extract[String]
+    val shuffleId = (json \ "Shuffle ID").extract[Int]
     val numTasks = (json \ "Number of Tasks").extract[Int]
     val rddInfos = (json \ "RDD Info").extract[List[JValue]].map(rddInfoFromJson)
     val parentIds = Utils.jsonOption(json \ "Parent IDs")
@@ -676,7 +681,7 @@ private[spark] object JsonProtocol {
     }
 
     val stageInfo = new StageInfo(
-      stageId, attemptId, stageName, numTasks, rddInfos, parentIds, details)
+      stageId, attemptId, stageName, numTasks, Some(shuffleId), rddInfos, parentIds, details)
     stageInfo.submissionTime = submissionTime
     stageInfo.completionTime = completionTime
     stageInfo.failureReason = failureReason

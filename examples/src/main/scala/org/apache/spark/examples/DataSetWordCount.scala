@@ -15,25 +15,34 @@
  * limitations under the License.
  */
 
-package org.apache.spark.ui.jobs
+// scalastyle:off println
+package org.apache.spark.examples
 
-import org.apache.spark.scheduler.SchedulingMode
-import org.apache.spark.ui.{SparkUI, SparkUITab}
+import org.apache.spark.sql.SQLContext
+import org.apache.spark.{SparkContext, SparkConf}
+import org.apache.spark.sql.functions._
 
-/** Web UI showing progress status of all jobs in the given SparkContext. */
-private[ui] class JobsTab(parent: SparkUI) extends SparkUITab(parent, "jobs") {
-  val sc = parent.sc
-  val killEnabled = parent.killEnabled
-  val jobProgresslistener = parent.jobProgressListener
-  val executorListener = parent.executorsListener
-  val operationGraphListener = parent.operationGraphListener
+object DataSetWordCount {
+  def main(args: Array[String]) {
+    val conf = new SparkConf().setAppName("DataSetWordCount")
+    val ssc = new SQLContext(new SparkContext(conf))
+    import ssc.implicits._
 
-  def isFairScheduler: Boolean =
-    jobProgresslistener.schedulingMode == Some(SchedulingMode.FAIR)
+    val lines = ssc.read.text(args(0)).as[String]
+    val frequencies = lines
+      .flatMap(_.split(" "))
+      .filter(_ != "")
+      .toDF()
+      .groupBy($"value")
+      .agg(count("*") as "numOccurances")
+      .orderBy($"numOccurances".desc)
 
-  def getSparkUser: String = parent.getSparkUser
+    frequencies.collect() foreach {
+      println
+    }
 
-  attachPage(new AllJobsPage(this))
-  attachPage(new JobPage(this))
-  attachPage(new JobExecutionPage(this))
+    Thread.sleep(60 * 60 * 1000)
+  }
 }
+// scalastyle:on println
+

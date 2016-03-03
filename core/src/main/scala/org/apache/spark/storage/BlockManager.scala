@@ -46,9 +46,11 @@ import org.apache.spark.util.io.ChunkedByteBuffer
 
 /* Class for returning a fetched block and associated metrics. */
 private[spark] class BlockResult(
+    val blockId: BlockId,
     val data: Iterator[Any],
     val readMethod: DataReadMethod.Value,
-    val bytes: Long)
+    val bytes: Long,
+    val loc: Option[BlockManagerId] = None)
 
 /**
  * Manager running on every node (driver and executors) which provides interfaces for putting and
@@ -426,15 +428,20 @@ private[spark] class BlockManager(
       case Some(info) =>
         val level = info.level
         logDebug(s"Level for block $blockId is $level")
-        if (level.useMemory && memoryStore.contains(blockId)) {
-          val iter: Iterator[Any] = if (level.deserialized) {
-            memoryStore.getValues(blockId).get
+        // Look for the block in memory
+        if (level.useMemory) {
+          logDebug(s"Getting block $blockId from memory")
+          val result = if (asBlockResult) {
+            memoryStore.getValues(blockId).map { iter =>
+              val ci = CompletionIterator[Any, Iterator[Any]](iter, releaseLock(blockId))
+              new BlockResult(blockId, ci, DataReadMethod.Memory, info.size)
+            }
           } else {
             serializerManager.dataDeserializeStream(
               blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
           }
           val ci = CompletionIterator[Any, Iterator[Any]](iter, releaseLock(blockId))
-          Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
+          Some(new BlockResult(blockId, ci, DataReadMethod.Memory, info.size))
         } else if (level.useDisk && diskStore.contains(blockId)) {
           val iterToReturn: Iterator[Any] = {
             val diskBytes = diskStore.getBytes(blockId)
@@ -451,7 +458,7 @@ private[spark] class BlockManager(
             }
           }
           val ci = CompletionIterator[Any, Iterator[Any]](iterToReturn, releaseLock(blockId))
-          Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
+          Some(new BlockResult(blockId, ci, DataReadMethod.Disk, info.size))
         } else {
           handleLocalReadFailure(blockId)
         }

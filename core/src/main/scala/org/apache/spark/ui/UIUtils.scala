@@ -180,6 +180,23 @@ private[spark] object UIUtils extends Logging {
     <script src={prependBaseUri("/static/spark-dag-viz.js")}></script>
   }
 
+  def execVizHeaderNodes: Seq[Node] = {
+      <link rel="stylesheet" href={prependBaseUri("/static/spark-exec-viz.css")} type="text/css" />
+      <script src={prependBaseUri("/static/jquery-1.11.1.min.js")}></script>
+      <script src={prependBaseUri("/static/jquery-ui.js")}></script>
+      <script src={prependBaseUri("/static/jquery.zoomooz.js")}></script>
+      <script src={prependBaseUri("/static/d3.min.js")}></script>
+      <script src={prependBaseUri("/static/spark-exec-viz.js")}></script>
+      <script src={prependBaseUri("/static/attributes.js")}></script>
+      <script src={prependBaseUri("/static/params.js")}></script>
+      <script src={prependBaseUri("/static/graphContainer.js")}></script>
+      <script src={prependBaseUri("/static/tableContainer.js")}></script>
+      <script src={prependBaseUri("/static/force.js")}></script>
+      <script src={prependBaseUri("/static/graphVis.js")}></script>
+      <script src={prependBaseUri("/static/tableVis.js")}></script>
+      <script src={prependBaseUri("/static/controller.js")}></script>
+  }
+
   def dataTablesHeaderNodes: Seq[Node] = {
     <link rel="stylesheet"
           href={prependBaseUri("/static/jquery.dataTables.1.10.4.min.css")} type="text/css"/>
@@ -412,6 +429,43 @@ private[spark] object UIUtils extends Logging {
     <sup>
       (<a data-toggle="tooltip" data-placement={position} title={text}>?</a>)
     </sup>
+  }
+
+  /** Return a script element that automatically expands the DAG visualization on page load. */
+  def expandDagVizOnLoad(forJob: Boolean): Seq[Node] = {
+    <script type="text/javascript">
+      {Unparsed("$(document).ready(function() { toggleDagViz(" + forJob + ") });")}
+    </script>
+  }
+
+  def emptySparkPage(title: String,
+                     content: => Seq[Node],
+                     additionalHeaderNodes: => Seq[Node] = Seq.empty): Seq[Node] = {
+    <html>
+      <head>
+        {commonHeaderNodes}
+        {additionalHeaderNodes}
+        <title>{title}</title>
+      </head>
+      <body>
+        {content}
+      </body>
+    </html>
+  }
+
+  /**
+    * Returns an "Execution visualization" DOM element, that links to the execution
+    * visualizer.
+    */
+  def showExecVizForJob(basePath: String, jobId: Int): Seq[Node] = {
+    <div>
+      <a data-toggle="tooltip"
+         title="Execution visualization"
+         data-placement="right"
+         href={prependBaseUri(basePath, s"/jobs/execution/?id=$jobId")}>
+        Execution Visualization
+      </a>
+    </div>
   }
 
   /**

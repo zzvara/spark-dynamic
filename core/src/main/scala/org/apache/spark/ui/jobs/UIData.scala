@@ -111,6 +111,7 @@ private[spark] object UIData {
    * These are kept mutable and reused throughout a task's lifetime to avoid excessive reallocation.
    */
   class TaskUIData private(
+      private var stageId: Int,
       private var _taskInfo: TaskInfo,
       private var _metrics: Option[TaskMetricsUIData]) {
 

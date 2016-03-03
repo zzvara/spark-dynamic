@@ -31,6 +31,13 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   private[executor] val _bytesWritten = new LongAccumulator
   private[executor] val _recordsWritten = new LongAccumulator
   private[executor] val _writeTime = new LongAccumulator
+  private[executor] val _dataCharacteristics = new Accumulator[Seq[(Any, Int)]]
+
+  def dataCharacteristics: Seq[(Any, Int)] = _dataCharacteristics.localValue
+
+  def compact(): Unit = {
+    _dataCharacteristics.compact()
+  }
 
   /**
    * Number of bytes written for the shuffle by this task.
@@ -47,6 +54,9 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
    */
   def writeTime: Long = _writeTime.sum
 
+  private[spark] def addKeyWritten(k: Any): Unit = {
+    _dataCharacteristics.add(Seq[(Any, Int)](k -> 1))
+  }
   private[spark] def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)
   private[spark] def incWriteTime(v: Long): Unit = _writeTime.add(v)
