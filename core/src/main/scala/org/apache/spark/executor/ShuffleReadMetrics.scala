@@ -17,7 +17,12 @@
 
 package org.apache.spark.executor
 
+import org.apache.spark.status.api.v1.BlockFetchInfo
+import org.apache.spark.storage.BlockResult
+import org.apache.spark.{SparkEnv, Logging, Accumulator, InternalAccumulator}
 import org.apache.spark.annotation.DeveloperApi
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.shuffle.ShuffleReadMetricsReporter
 import org.apache.spark.util.LongAccumulator
 
@@ -36,6 +41,55 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   private[executor] val _localBytesRead = new LongAccumulator
   private[executor] val _fetchWaitTime = new LongAccumulator
   private[executor] val _recordsRead = new LongAccumulator
+  private[executor] val _dataCharacteristics = new Accumulator[Map[Any, Double]]()
+
+  val recordCharacteristics: Boolean =
+    SparkEnv.get.conf.getBoolean("spark.metrics.shuffleRead.dataCharacteristics", true)
+
+  def dataCharacteristics(): Map[Any, Double] = _dataCharacteristics.localValue
+
+  def setDataCharacteristics(s: Map[Any, Double]) : Unit = {
+    _dataCharacteristics.setValue(s)
+  }
+
+  private[spark] def recordIterator(iter: Iterator[(_, _)]): Iterator[(_, _)] = {
+    if (recordCharacteristics) {
+      iter.map {
+        pair =>
+          _dataCharacteristics.add(Map[Any, Double](pair._1 -> 1.0))
+          pair
+      }
+    } else {
+      iter
+    }
+  }
+  def compact(): Unit = {
+    _dataCharacteristics.compact()
+  }
+
+  private[spark] def addBlockFetch(blockResult: BlockResult) : Unit = {
+    logInfo(s"Recording shuffle block result ${blockResult.blockId}.")
+    blockResult.loc match {
+      case Some(loc) =>
+        _remoteBlockFetchInfos.add(
+          mutable.Seq(new BlockFetchInfo(blockResult.blockId,
+            blockResult.bytes,
+            Some(loc.executorId),
+            Some(loc.host))))
+      case _ =>
+        _localBlockFetchInfos.add(
+          mutable.Seq(new BlockFetchInfo(blockResult.blockId,
+            blockResult.bytes)))
+    }
+  }
+
+  private[spark] def addBlockFetch(blockFetchInfo: BlockFetchInfo) : Unit = {
+    logInfo(s"Recording shuffle block fetch ${blockFetchInfo.blockId}.")
+    blockFetchInfo.host match {
+      case Some(host) => _remoteBlockFetchInfos.add(mutable.Seq(blockFetchInfo))
+      case _ => _localBlockFetchInfos.add(mutable.Seq(blockFetchInfo))
+    }
+  }
 
   /**
    * Number of remote blocks fetched in this shuffle by this task.
@@ -43,9 +97,19 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   def remoteBlocksFetched: Long = _remoteBlocksFetched.sum
 
   /**
+    * @todo What?
+    */
+  def remoteBlockFetchInfos(): Seq[BlockFetchInfo] = _remoteBlockFetchInfos.localValue
+
+  /**
    * Number of local blocks fetched in this shuffle by this task.
    */
   def localBlocksFetched: Long = _localBlocksFetched.sum
+
+  /**
+    * @todo What?
+    */
+  def localBlockFetchInfos(): Seq[BlockFetchInfo] = _localBlockFetchInfos.localValue
 
   /**
    * Total number of remote bytes read from the shuffle by this task.
@@ -99,6 +163,10 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   private[spark] def setLocalBytesRead(v: Long): Unit = _localBytesRead.setValue(v)
   private[spark] def setFetchWaitTime(v: Long): Unit = _fetchWaitTime.setValue(v)
   private[spark] def setRecordsRead(v: Long): Unit = _recordsRead.setValue(v)
+  private[spark] def setRemoteBlockFetchInfos(s: ArrayBuffer[BlockFetchInfo]): Unit =
+    _remoteBlockFetchInfos.setValue(s)
+  private[spark] def setLocalBlockFetchInfos(s: ArrayBuffer[BlockFetchInfo]): Unit =
+    _localBlockFetchInfos.setValue(s)
 
   /**
    * Resets the value of the current metrics (`this`) and merges all the independent
@@ -112,6 +180,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
     _localBytesRead.setValue(0)
     _fetchWaitTime.setValue(0)
     _recordsRead.setValue(0)
+    _dataCharacteristics.setValue(???)
     metrics.foreach { metric =>
       _remoteBlocksFetched.add(metric.remoteBlocksFetched)
       _localBlocksFetched.add(metric.localBlocksFetched)

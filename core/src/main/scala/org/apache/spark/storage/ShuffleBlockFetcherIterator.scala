@@ -23,6 +23,7 @@ import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
 import javax.annotation.concurrent.GuardedBy
 
 import scala.collection.mutable
+import org.apache.spark.status.api.v1.BlockFetchInfo
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, Queue}
 
 import org.apache.commons.io.IOUtils
@@ -206,13 +207,16 @@ final class ShuffleBlockFetcherIterator(
     while (iter.hasNext) {
       val result = iter.next()
       result match {
-        case SuccessFetchResult(_, address, _, buf, _) =>
+        case SuccessFetchResult(blockId, address, _, buf, _) =>
           if (address != blockManager.blockManagerId) {
             shuffleMetrics.incRemoteBytesRead(buf.size)
             if (buf.isInstanceOf[FileSegmentManagedBuffer]) {
               shuffleMetrics.incRemoteBytesReadToDisk(buf.size)
             }
             shuffleMetrics.incRemoteBlocksFetched(1)
+            shuffleMetrics.addBlockFetch(
+              new BlockFetchInfo(blockId, buf.size,
+                                 Some(address.executorId), Some(address.host)))
           }
           buf.release()
         case _ =>
@@ -353,6 +357,7 @@ final class ShuffleBlockFetcherIterator(
         val buf = blockManager.getBlockData(blockId)
         shuffleMetrics.incLocalBlocksFetched(1)
         shuffleMetrics.incLocalBytesRead(buf.size)
+        shuffleMetrics.addBlockFetch(new BlockFetchInfo(blockId, buf.size()))
         buf.retain()
         results.put(new SuccessFetchResult(blockId, blockManager.blockManagerId,
           buf.size(), buf, false))

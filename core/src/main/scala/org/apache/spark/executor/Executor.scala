@@ -419,10 +419,25 @@ private[spark] class Executor(
         } else 0L
         var threwException = true
         val value = Utils.tryWithSafeFinally {
+          val context = new TaskContextImpl(
+            task.stageId,
+            task.partitionId,
+            taskId,
+            taskDescription.attemptNumber,
+            taskMemoryManager,
+            env.metricsSystem,
+            task.initialAccumulators)
+          SparkEnv.get.repartitioningWorker()
+            .asInstanceOf[RepartitioningTrackerWorker].taskArrival(
+            taskId,
+            task.stageId,
+            context
+          )
           val res = task.run(
             taskAttemptId = taskId,
             attemptNumber = taskDescription.attemptNumber,
-            metricsSystem = env.metricsSystem)
+            metricsSystem = env.metricsSystem,
+            taskContext = context)
           threwException = false
           res
         } {
@@ -484,6 +499,8 @@ private[spark] class Executor(
         task.metrics.setJvmGCTime(computeTotalGcTime() - startGCTime)
         task.metrics.setResultSerializationTime(TimeUnit.NANOSECONDS.toMillis(
           afterSerializationNs - beforeSerializationNs))
+        task.metrics.shuffleWriteMetrics.foreach(_.compact())
+        task.metrics.shuffleReadMetrics.foreach(_.compact())
 
         // Expose task metrics using the Dropwizard metrics system.
         // Update task metrics counters

@@ -20,7 +20,8 @@ package org.apache.spark.storage
 import java.io.{BufferedOutputStream, File, FileOutputStream, OutputStream}
 import java.nio.channels.FileChannel
 
-import org.apache.spark.internal.Logging
+import org.apache.spark.{SparkEnv, Logging}
+import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.serializer.{SerializationStream, SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShuffleWriteMetricsReporter
 import org.apache.spark.util.Utils
@@ -46,7 +47,7 @@ private[spark] class DiskBlockObjectWriter(
     writeMetrics: ShuffleWriteMetricsReporter,
     val blockId: BlockId = null)
   extends OutputStream
-  with Logging {
+  with ColorfulLogging {
 
   /**
    * Guards against close calls, e.g. from a wrapping stream.
@@ -98,6 +99,9 @@ private[spark] class DiskBlockObjectWriter(
    * And we reset it after every commitAndGet called.
    */
   private var numRecordsWritten = 0
+
+  private val recordCharacteristics: Boolean =
+    SparkEnv.get.conf.getBoolean("spark.metrics.shuffleWrite.dataCharacteristics", true)
 
   private def initialize(): Unit = {
     fos = new FileOutputStream(file, true)
@@ -235,6 +239,10 @@ private[spark] class DiskBlockObjectWriter(
   def write(key: Any, value: Any) {
     if (!streamOpen) {
       open()
+    }
+
+    if (recordCharacteristics) {
+      writeMetrics.addKeyWritten(key)
     }
 
     objOut.writeKey(key)

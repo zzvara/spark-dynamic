@@ -281,6 +281,7 @@ private[spark] object JsonProtocol {
     ("Stage ID" -> stageInfo.stageId) ~
     ("Stage Attempt ID" -> stageInfo.attemptNumber) ~
     ("Stage Name" -> stageInfo.name) ~
+    ("Shuffle ID" -> stageInfo.shuffleId) ~
     ("Number of Tasks" -> stageInfo.numTasks) ~
     ("RDD Info" -> rddInfo) ~
     ("Parent IDs" -> parentIds) ~
@@ -358,6 +359,12 @@ private[spark] object JsonProtocol {
   def taskMetricsToJson(taskMetrics: TaskMetrics): JValue = {
     val shuffleReadMetrics: JValue =
       ("Remote Blocks Fetched" -> taskMetrics.shuffleReadMetrics.remoteBlocksFetched) ~
+        ("Fetched Remote Blocks" -> taskMetrics.shuffleReadMetrics.remoteBlockFetchInfos.map {
+          i => ("Block ID" -> i.blockId.name) ~
+            ("Bytes" -> i.bytes) ~
+            ("Executor ID" -> i.executorId) ~
+            ("Host" -> i.host)
+        }) ~
         ("Local Blocks Fetched" -> taskMetrics.shuffleReadMetrics.localBlocksFetched) ~
         ("Fetch Wait Time" -> taskMetrics.shuffleReadMetrics.fetchWaitTime) ~
         ("Remote Bytes Read" -> taskMetrics.shuffleReadMetrics.remoteBytesRead) ~
@@ -642,7 +649,7 @@ private[spark] object JsonProtocol {
     val stageInfos = jsonOption(json \ "Stage Infos")
       .map(_.extract[Seq[JValue]].map(stageInfoFromJson)).getOrElse {
         stageIds.map { id =>
-          new StageInfo(id, 0, "unknown", 0, Seq.empty, Seq.empty, "unknown")
+          new StageInfo(id, 0, "unknown", 0, None, Seq.empty, Seq.empty, "unknown")
         }
       }
     SparkListenerJobStart(jobId, submissionTime, stageInfos, properties)
@@ -760,6 +767,7 @@ private[spark] object JsonProtocol {
     val stageId = (json \ "Stage ID").extract[Int]
     val attemptId = jsonOption(json \ "Stage Attempt ID").map(_.extract[Int]).getOrElse(0)
     val stageName = (json \ "Stage Name").extract[String]
+    val shuffleId = (json \ "Shuffle ID").extract[Int]
     val numTasks = (json \ "Number of Tasks").extract[Int]
     val rddInfos = (json \ "RDD Info").extract[List[JValue]].map(rddInfoFromJson)
     val parentIds = jsonOption(json \ "Parent IDs")
@@ -777,7 +785,7 @@ private[spark] object JsonProtocol {
     }
 
     val stageInfo = new StageInfo(
-      stageId, attemptId, stageName, numTasks, rddInfos, parentIds, details)
+      stageId, attemptId, stageName, numTasks, Some(shuffleId), rddInfos, parentIds, details)
     stageInfo.submissionTime = submissionTime
     stageInfo.completionTime = completionTime
     stageInfo.failureReason = failureReason

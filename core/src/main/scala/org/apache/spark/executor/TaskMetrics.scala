@@ -19,6 +19,10 @@ package org.apache.spark.executor
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.{ArrayBuffer, LinkedHashMap}
+import org.apache.spark.status.api.v1.BlockFetchInfo
+
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
@@ -27,6 +31,7 @@ import org.apache.spark.internal.config.Tests.IS_TESTING
 import org.apache.spark.scheduler.AccumulableInfo
 import org.apache.spark.storage.{BlockId, BlockStatus}
 import org.apache.spark.util._
+import org.apache.spark.storage.{BlockResult, BlockId, BlockStatus}
 
 
 /**
@@ -56,7 +61,23 @@ class TaskMetrics private[spark] () extends Serializable {
   private val _diskBytesSpilled = new LongAccumulator
   private val _peakExecutionMemory = new LongAccumulator
   private val _updatedBlockStatuses = new CollectionAccumulator[(BlockId, BlockStatus)]
+  private val _blockFetches = new CollectionAccumulator[BlockFetchInfo]
 
+  var repartitioningInfo: Option[RepartitioningInfo] = None
+
+  private[spark] def addBlockFetch(blockResult: BlockResult) : Unit = {
+    if (!blockResult.blockId.isShuffle) {
+      logInfo(s"Recording block result ${blockResult.blockId}.")
+      _blockFetches.add(
+        mutable.Seq(new BlockFetchInfo(blockResult.blockId, blockResult.bytes)))
+    } else {
+      shuffleReadMetrics.foreach {
+        _.addBlockFetch(blockResult)
+      }
+    }
+  }
+
+  def blockFetchInfos: Seq[BlockFetchInfo] = _blockFetches.localValue
   /**
    * Time taken on the executor to deserialize this task.
    */
@@ -219,6 +240,7 @@ class TaskMetrics private[spark] () extends Serializable {
     DISK_BYTES_SPILLED -> _diskBytesSpilled,
     PEAK_EXECUTION_MEMORY -> _peakExecutionMemory,
     UPDATED_BLOCK_STATUSES -> _updatedBlockStatuses,
+    shuffleRead.DATA_CHARACTERISTICS -> shuffleReadMetrics._dataCharacteristics,
     shuffleRead.REMOTE_BLOCKS_FETCHED -> shuffleReadMetrics._remoteBlocksFetched,
     shuffleRead.LOCAL_BLOCKS_FETCHED -> shuffleReadMetrics._localBlocksFetched,
     shuffleRead.REMOTE_BYTES_READ -> shuffleReadMetrics._remoteBytesRead,

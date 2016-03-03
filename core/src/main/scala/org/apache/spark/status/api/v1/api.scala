@@ -19,14 +19,15 @@ package org.apache.spark.status.api.v1
 import java.lang.{Long => JLong}
 import java.util.Date
 
-import scala.xml.{NodeSeq, Text}
+import org.apache.spark.storage.{BlockId, RDDInfo}
 
+import scala.collection.Map
+import scala.xml.{NodeSeq, Text}
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.core.{JsonGenerator, JsonParser}
 import com.fasterxml.jackson.core.`type`.TypeReference
 import com.fasterxml.jackson.databind.{DeserializationContext, JsonDeserializer, JsonSerializer, SerializerProvider}
 import com.fasterxml.jackson.databind.annotation.{JsonDeserialize, JsonSerialize}
-
 import org.apache.spark.JobExecutionStatus
 import org.apache.spark.executor.ExecutorMetrics
 import org.apache.spark.metrics.ExecutorMetricType
@@ -217,10 +218,13 @@ class StageData private[spark](
     val completionTime: Option[Date],
     val failureReason: Option[String],
 
+    val rddData: Seq[RDDInfo],
+
     val inputBytes: Long,
     val inputRecords: Long,
     val outputBytes: Long,
     val outputRecords: Long,
+    val shuffleId: Option[Int],
     val shuffleReadBytes: Long,
     val shuffleReadRecords: Long,
     val shuffleWriteBytes: Long,
@@ -243,7 +247,10 @@ class TaskData private[spark](
     val taskId: Long,
     val index: Int,
     val attempt: Int,
+    val stageId: Int,
+    val status: String,
     val launchTime: Date,
+    val finishTime: Date,
     val resultFetchStart: Option[Date],
     @JsonDeserialize(contentAs = classOf[JLong])
     val duration: Option[Long],
@@ -272,6 +279,7 @@ class TaskMetrics private[spark](
     val peakExecutionMemory: Long,
     val inputMetrics: InputMetrics,
     val outputMetrics: OutputMetrics,
+    val blockFetchInfos: Seq[BlockFetchInfo],
     val shuffleReadMetrics: ShuffleReadMetrics,
     val shuffleWriteMetrics: ShuffleWriteMetrics)
 
@@ -285,17 +293,27 @@ class OutputMetrics private[spark](
 
 class ShuffleReadMetrics private[spark](
     val remoteBlocksFetched: Long,
+    val remoteBlockFetchInfos: Seq[BlockFetchInfo],
     val localBlocksFetched: Long,
+    val localBlockFetchInfos: Seq[BlockFetchInfo],
     val fetchWaitTime: Long,
     val remoteBytesRead: Long,
     val remoteBytesReadToDisk: Long,
     val localBytesRead: Long,
-    val recordsRead: Long)
+    val recordsRead: Long,
+    val dataCharacteristics: Map[Any, Double])
+
+class BlockFetchInfo private[spark](
+  var blockId: BlockId,
+  var bytes: Long,
+  var executorId: Option[String] = None,
+  var host: Option[String] = None) extends Serializable
 
 class ShuffleWriteMetrics private[spark](
     val bytesWritten: Long,
     val writeTime: Long,
-    val recordsWritten: Long)
+    val recordsWritten: Long,
+    val dataCharacteristics: Map[Any, Double])
 
 class TaskMetricDistributions private[spark](
     val quantiles: IndexedSeq[Double],

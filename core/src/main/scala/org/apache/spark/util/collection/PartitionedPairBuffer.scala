@@ -81,7 +81,7 @@ private[spark] class PartitionedPairBuffer[K, V](initialCapacity: Int = 64)
     iterator
   }
 
-  private def iterator(): Iterator[((Int, K), V)] = new Iterator[((Int, K), V)] {
+  protected def iterator(): Iterator[((Int, K), V)] = new Iterator[((Int, K), V)] {
     var pos = 0
 
     override def hasNext: Boolean = pos < curSize
@@ -99,4 +99,16 @@ private[spark] class PartitionedPairBuffer[K, V](initialCapacity: Int = 64)
 
 private object PartitionedPairBuffer {
   val MAXIMUM_CAPACITY: Int = ByteArrayMethods.MAX_ROUNDED_ARRAY_LENGTH / 2
+}
+
+class RepartitionBuffer[K, V](initialCapacity: Int = 64)
+extends PartitionedPairBuffer[K, V](initialCapacity) {
+  override def iterator(): Iterator[((Int, K), V)] = {
+    super.iterator()
+  }
+
+  override def partitionedDestructiveSortedIterator(keyComparator: Option[Comparator[K]]):
+  Iterator[((Int, K), V)] = {
+    iterator()
+  }
 }

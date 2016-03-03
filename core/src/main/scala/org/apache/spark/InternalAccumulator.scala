@@ -41,6 +41,7 @@ private[spark] object InternalAccumulator {
   val DISK_BYTES_SPILLED = METRICS_PREFIX + "diskBytesSpilled"
   val PEAK_EXECUTION_MEMORY = METRICS_PREFIX + "peakExecutionMemory"
   val UPDATED_BLOCK_STATUSES = METRICS_PREFIX + "updatedBlockStatuses"
+  val BLOCK_FETCH_INFOS = METRICS_PREFIX + "blockFetchInfos"
   val TEST_ACCUM = METRICS_PREFIX + "testAccumulator"
 
   // scalastyle:off
@@ -48,12 +49,15 @@ private[spark] object InternalAccumulator {
   // Names of shuffle read metrics
   object shuffleRead {
     val REMOTE_BLOCKS_FETCHED = SHUFFLE_READ_METRICS_PREFIX + "remoteBlocksFetched"
+    val REMOTE_BLOCK_FETCH_INFOS = SHUFFLE_READ_METRICS_PREFIX + "remoteBlockFetchInfos"
     val LOCAL_BLOCKS_FETCHED = SHUFFLE_READ_METRICS_PREFIX + "localBlocksFetched"
+    val LOCAL_BLOCK_FETCH_INFOS = SHUFFLE_READ_METRICS_PREFIX + "localBlockFetchInfos"
     val REMOTE_BYTES_READ = SHUFFLE_READ_METRICS_PREFIX + "remoteBytesRead"
     val REMOTE_BYTES_READ_TO_DISK = SHUFFLE_READ_METRICS_PREFIX + "remoteBytesReadToDisk"
     val LOCAL_BYTES_READ = SHUFFLE_READ_METRICS_PREFIX + "localBytesRead"
     val FETCH_WAIT_TIME = SHUFFLE_READ_METRICS_PREFIX + "fetchWaitTime"
     val RECORDS_READ = SHUFFLE_READ_METRICS_PREFIX + "recordsRead"
+    val DATA_CHARACTERISTICS = SHUFFLE_READ_METRICS_PREFIX + "dataCharacteristics"
   }
 
   // Names of shuffle write metrics
@@ -61,6 +65,7 @@ private[spark] object InternalAccumulator {
     val BYTES_WRITTEN = SHUFFLE_WRITE_METRICS_PREFIX + "bytesWritten"
     val RECORDS_WRITTEN = SHUFFLE_WRITE_METRICS_PREFIX + "recordsWritten"
     val WRITE_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "writeTime"
+    val DATA_CHARACTERISTICS = SHUFFLE_WRITE_METRICS_PREFIX + "dataCharacteristics"
   }
 
   // Names of output metrics

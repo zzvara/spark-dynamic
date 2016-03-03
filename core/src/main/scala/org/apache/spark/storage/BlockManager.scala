@@ -60,9 +60,11 @@ import org.apache.spark.util.io.ChunkedByteBuffer
 
 /* Class for returning a fetched block and associated metrics. */
 private[spark] class BlockResult(
+    val blockId: BlockId,
     val data: Iterator[Any],
     val readMethod: DataReadMethod.Value,
-    val bytes: Long)
+    val bytes: Long,
+    val loc: Option[BlockManagerId] = None)
 
 /**
  * Abstracts away how blocks are stored and provides different ways to read the underlying block
