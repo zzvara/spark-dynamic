@@ -52,6 +52,7 @@ class SQLListenerSuite extends SparkFunSuite with SharedSQLContext {
     // The following fields are not used in tests
     name = "",
     numTasks = 0,
+    shuffleId = None,
     rddInfos = Nil,
     parentIds = Nil,
     details = ""
