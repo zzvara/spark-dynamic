@@ -32,6 +32,7 @@ class StageInfo(
     val attemptId: Int,
     val name: String,
     val numTasks: Int,
+    val shuffleId: Option[Int],
     val rddInfos: Seq[RDDInfo],
     val parentIds: Seq[Int],
     val details: String,
@@ -79,11 +80,16 @@ private[spark] object StageInfo {
     ): StageInfo = {
     val ancestorRddInfos = stage.rdd.getNarrowAncestors.map(RDDInfo.fromRdd)
     val rddInfos = Seq(RDDInfo.fromRdd(stage.rdd)) ++ ancestorRddInfos
+    val shuffleId = stage match {
+      case shuffleMapStage: ShuffleMapStage => Some(shuffleMapStage.shuffleDep.shuffleId)
+      case _ => None
+    }
     new StageInfo(
       stage.id,
       attemptId,
       stage.name,
       numTasks.getOrElse(stage.numTasks),
+      shuffleId,
       rddInfos,
       stage.parents.map(_.id),
       stage.details,

@@ -17,7 +17,10 @@
 
 package org.apache.spark
 
+import org.apache.spark.status.api.v1.BlockFetchInfo
 import org.apache.spark.storage.{BlockId, BlockStatus}
+
+import scala.collection.mutable.ArrayBuffer
 
 
 /**
@@ -45,6 +48,7 @@ private[spark] object InternalAccumulator {
   val DISK_BYTES_SPILLED = METRICS_PREFIX + "diskBytesSpilled"
   val PEAK_EXECUTION_MEMORY = METRICS_PREFIX + "peakExecutionMemory"
   val UPDATED_BLOCK_STATUSES = METRICS_PREFIX + "updatedBlockStatuses"
+  val BLOCK_FETCH_INFOS = METRICS_PREFIX + "blockFetchInfos"
   val TEST_ACCUM = METRICS_PREFIX + "testAccumulator"
 
   // scalastyle:off
@@ -52,7 +56,9 @@ private[spark] object InternalAccumulator {
   // Names of shuffle read metrics
   object shuffleRead {
     val REMOTE_BLOCKS_FETCHED = SHUFFLE_READ_METRICS_PREFIX + "remoteBlocksFetched"
+    val REMOTE_BLOCK_FETCH_INFOS = SHUFFLE_READ_METRICS_PREFIX + "remoteBlockFetchInfos"
     val LOCAL_BLOCKS_FETCHED = SHUFFLE_READ_METRICS_PREFIX + "localBlocksFetched"
+    val LOCAL_BLOCK_FETCH_INFOS = SHUFFLE_READ_METRICS_PREFIX + "localBlockFetchInfos"
     val REMOTE_BYTES_READ = SHUFFLE_READ_METRICS_PREFIX + "remoteBytesRead"
     val LOCAL_BYTES_READ = SHUFFLE_READ_METRICS_PREFIX + "localBytesRead"
     val FETCH_WAIT_TIME = SHUFFLE_READ_METRICS_PREFIX + "fetchWaitTime"
@@ -64,6 +70,7 @@ private[spark] object InternalAccumulator {
     val BYTES_WRITTEN = SHUFFLE_WRITE_METRICS_PREFIX + "bytesWritten"
     val RECORDS_WRITTEN = SHUFFLE_WRITE_METRICS_PREFIX + "recordsWritten"
     val WRITE_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "writeTime"
+    val DATA_CHARACTERISTICS = SHUFFLE_WRITE_METRICS_PREFIX + "dataCharacteristics"
   }
 
   // Names of output metrics
@@ -92,8 +99,14 @@ private[spark] object InternalAccumulator {
       case p @ LongAccumulatorParam => newMetric[Long](0L, name, p)
       case p @ IntAccumulatorParam => newMetric[Int](0, name, p)
       case p @ StringAccumulatorParam => newMetric[String]("", name, p)
+      case p @ LocalBlockFetchnInfosAccumulatorParam =>
+        newMetric[Seq[BlockFetchInfo]](new ArrayBuffer[BlockFetchInfo](), name, p)
+      case p @ RemoteBlockFetchnInfosAccumulatorParam =>
+        newMetric[Seq[BlockFetchInfo]](new ArrayBuffer[BlockFetchInfo](), name, p)
       case p @ UpdatedBlockStatusesAccumulatorParam =>
         newMetric[Seq[(BlockId, BlockStatus)]](Seq(), name, p)
+      case p @ DataCharacteristicsAccumulatorParam =>
+        newMetric[Seq[(Any, Int)]](new ArrayBuffer[(Any, Int)](), name, p)
       case p => throw new IllegalArgumentException(
         s"unsupported accumulator param '${p.getClass.getSimpleName}' for metric '$name'.")
     }
@@ -108,10 +121,14 @@ private[spark] object InternalAccumulator {
       s"internal accumulator name must start with '$METRICS_PREFIX': $name")
     name match {
       case UPDATED_BLOCK_STATUSES => UpdatedBlockStatusesAccumulatorParam
+      case BLOCK_FETCH_INFOS => LocalBlockFetchnInfosAccumulatorParam
       case shuffleRead.LOCAL_BLOCKS_FETCHED => IntAccumulatorParam
+      case shuffleRead.LOCAL_BLOCK_FETCH_INFOS => LocalBlockFetchnInfosAccumulatorParam
       case shuffleRead.REMOTE_BLOCKS_FETCHED => IntAccumulatorParam
+      case shuffleRead.REMOTE_BLOCK_FETCH_INFOS => RemoteBlockFetchnInfosAccumulatorParam
       case input.READ_METHOD => StringAccumulatorParam
       case output.WRITE_METHOD => StringAccumulatorParam
+      case shuffleWrite.DATA_CHARACTERISTICS => DataCharacteristicsAccumulatorParam
       case _ => LongAccumulatorParam
     }
   }
@@ -129,8 +146,9 @@ private[spark] object InternalAccumulator {
       MEMORY_BYTES_SPILLED,
       DISK_BYTES_SPILLED,
       PEAK_EXECUTION_MEMORY,
-      UPDATED_BLOCK_STATUSES).map(create) ++
-      createShuffleReadAccums() ++
+      UPDATED_BLOCK_STATUSES,
+      BLOCK_FETCH_INFOS).map(create) ++
+      createShuffleReadAccumulables() ++
       createShuffleWriteAccums() ++
       createInputAccums() ++
       createOutputAccums() ++
@@ -140,10 +158,12 @@ private[spark] object InternalAccumulator {
   /**
    * Accumulators for tracking shuffle read metrics.
    */
-  def createShuffleReadAccums(): Seq[Accumulator[_]] = {
+  def createShuffleReadAccumulables(): Seq[Accumulator[_]] = {
     Seq[String](
       shuffleRead.REMOTE_BLOCKS_FETCHED,
+      shuffleRead.REMOTE_BLOCK_FETCH_INFOS,
       shuffleRead.LOCAL_BLOCKS_FETCHED,
+      shuffleRead.LOCAL_BLOCK_FETCH_INFOS,
       shuffleRead.REMOTE_BYTES_READ,
       shuffleRead.LOCAL_BYTES_READ,
       shuffleRead.FETCH_WAIT_TIME,
@@ -157,7 +177,8 @@ private[spark] object InternalAccumulator {
     Seq[String](
       shuffleWrite.BYTES_WRITTEN,
       shuffleWrite.RECORDS_WRITTEN,
-      shuffleWrite.WRITE_TIME).map(create)
+      shuffleWrite.WRITE_TIME,
+      shuffleWrite.DATA_CHARACTERISTICS).map(create)
   }
 
   /**
@@ -205,5 +226,4 @@ private[spark] object InternalAccumulator {
       param: AccumulatorParam[T]): Accumulator[T] = {
     new Accumulator[T](initialValue, param, Some(name), internal = true, countFailedValues = true)
   }
-
 }

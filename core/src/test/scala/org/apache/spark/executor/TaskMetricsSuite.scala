@@ -74,7 +74,7 @@ class TaskMetricsSuite extends SparkFunSuite {
 
   test("create shuffle read metrics") {
     import shuffleRead._
-    val accums = InternalAccumulator.createShuffleReadAccums()
+    val accums = InternalAccumulator.createShuffleReadAccumulables()
       .map { a => (a.name.get, a) }.toMap[String, Accumulator[_]]
     accums(REMOTE_BLOCKS_FETCHED).setValueAny(1)
     accums(LOCAL_BLOCKS_FETCHED).setValueAny(2)

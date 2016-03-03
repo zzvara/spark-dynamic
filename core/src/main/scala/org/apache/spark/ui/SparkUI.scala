@@ -81,6 +81,8 @@ private[spark] class SparkUI private (
 
   def getAppName: String = appName
 
+  def getAppId: String = appId
+
   def setAppId(id: String): Unit = {
     appId = id
   }
@@ -127,7 +129,7 @@ private[spark] abstract class SparkUITab(parent: SparkUI, prefix: String)
   extends WebUITab(parent, prefix) {
 
   def appName: String = parent.getAppName
-
+  def appId: String = parent.getAppId
 }
 
 private[spark] object SparkUI {

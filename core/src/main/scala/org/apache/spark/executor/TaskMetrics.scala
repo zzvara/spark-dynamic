@@ -17,13 +17,15 @@
 
 package org.apache.spark.executor
 
+import org.apache.spark.status.api.v1.BlockFetchInfo
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.scheduler.AccumulableInfo
-import org.apache.spark.storage.{BlockId, BlockStatus}
+import org.apache.spark.storage.{BlockResult, BlockId, BlockStatus}
 
 
 /**
@@ -45,7 +47,8 @@ import org.apache.spark.storage.{BlockId, BlockStatus}
  *                      these requirements.
  */
 @DeveloperApi
-class TaskMetrics private[spark] (initialAccums: Seq[Accumulator[_]]) extends Serializable {
+class TaskMetrics private[spark] (initialAccums: Seq[Accumulator[_]])
+  extends Serializable with Logging {
   import InternalAccumulator._
 
   // Needed for Java tests
@@ -87,8 +90,24 @@ class TaskMetrics private[spark] (initialAccums: Seq[Accumulator[_]]) extends Se
   private val _memoryBytesSpilled = getAccum(MEMORY_BYTES_SPILLED)
   private val _diskBytesSpilled = getAccum(DISK_BYTES_SPILLED)
   private val _peakExecutionMemory = getAccum(PEAK_EXECUTION_MEMORY)
-  private val _updatedBlockStatuses =
-    TaskMetrics.getAccum[Seq[(BlockId, BlockStatus)]](initialAccumsMap, UPDATED_BLOCK_STATUSES)
+  private val _updatedBlockStatuses = TaskMetrics
+    .getAccumulator[Seq[(BlockId, BlockStatus)]](initialAccumsMap, UPDATED_BLOCK_STATUSES)
+  private val _blockFetches = TaskMetrics
+    .getAccumulator[Seq[BlockFetchInfo]](initialAccumsMap, BLOCK_FETCH_INFOS)
+
+  private[spark] def addBlockFetch(blockResult: BlockResult) : Unit = {
+    if (!blockResult.blockId.isShuffle) {
+      logInfo(s"Recording block result ${blockResult.blockId}.")
+      _blockFetches.add(
+        mutable.Seq(new BlockFetchInfo(blockResult.blockId, blockResult.bytes)))
+    } else {
+      shuffleReadMetrics.foreach {
+        _.addBlockFetch(blockResult)
+      }
+    }
+  }
+
+  def blockFetchInfos: Seq[BlockFetchInfo] = _blockFetches.localValue
 
   /**
    * Time taken on the executor to deserialize this task.
@@ -169,7 +188,7 @@ class TaskMetrics private[spark] (initialAccums: Seq[Accumulator[_]]) extends Se
    * Note: this only searches the initial set of accumulators passed into the constructor.
    */
   private[spark] def getAccum(name: String): Accumulator[Long] = {
-    TaskMetrics.getAccum[Long](initialAccumsMap, name)
+    TaskMetrics.getAccumulator[Long](initialAccumsMap, name)
   }
 
 
@@ -290,6 +309,8 @@ class TaskMetrics private[spark] (initialAccums: Seq[Accumulator[_]]) extends Se
       metrics.setRemoteBytesRead(tempShuffleReadMetrics.map(_.remoteBytesRead).sum)
       metrics.setLocalBytesRead(tempShuffleReadMetrics.map(_.localBytesRead).sum)
       metrics.setRecordsRead(tempShuffleReadMetrics.map(_.recordsRead).sum)
+      metrics.setRemoteBlockFetchInfos(tempShuffleReadMetrics.flatMap(_.remoteBlockFetchInfos()))
+      metrics.setLocalBlockFetchInfos(tempShuffleReadMetrics.flatMap(_.localBlockFetchInfos()))
       _shuffleReadMetrics = Some(metrics)
     }
   }
@@ -390,9 +411,9 @@ private[spark] object TaskMetrics extends Logging {
   def empty: TaskMetrics = new TaskMetrics
 
   /**
-   * Get an accumulator from the given map by name, assuming it exists.
-   */
-  def getAccum[T](accumMap: Map[String, Accumulator[_]], name: String): Accumulator[T] = {
+    * Get an accumulator from the given map by name, assuming it exists.
+    */
+  def getAccumulator[T](accumMap: Map[String, Accumulator[_]], name: String): Accumulator[T] = {
     require(accumMap.contains(name), s"metric '$name' is missing")
     val accum = accumMap(name)
     try {

@@ -96,7 +96,7 @@ class InternalAccumulatorSuite extends SparkFunSuite with LocalSparkContext {
 
   test("create") {
     val accums = createAll()
-    val shuffleReadAccums = createShuffleReadAccums()
+    val shuffleReadAccums = createShuffleReadAccumulables()
     val shuffleWriteAccums = createShuffleWriteAccums()
     val inputAccums = createInputAccums()
     val outputAccums = createOutputAccums()
@@ -132,7 +132,7 @@ class InternalAccumulatorSuite extends SparkFunSuite with LocalSparkContext {
 
   test("naming") {
     val accums = createAll()
-    val shuffleReadAccums = createShuffleReadAccums()
+    val shuffleReadAccums = createShuffleReadAccumulables()
     val shuffleWriteAccums = createShuffleWriteAccums()
     val inputAccums = createInputAccums()
     val outputAccums = createOutputAccums()

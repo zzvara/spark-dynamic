@@ -18,6 +18,8 @@ package org.apache.spark.status.api.v1
 
 import java.util.Date
 
+import org.apache.spark.storage.{BlockId, RDDInfo}
+
 import scala.collection.Map
 
 import org.apache.spark.JobExecutionStatus
@@ -128,10 +130,13 @@ class StageData private[spark](
     val firstTaskLaunchedTime: Option[Date],
     val completionTime: Option[Date],
 
+    val rddData: Seq[RDDInfo],
+
     val inputBytes: Long,
     val inputRecords: Long,
     val outputBytes: Long,
     val outputRecords: Long,
+    val shuffleId: Option[Int],
     val shuffleReadBytes: Long,
     val shuffleReadRecords: Long,
     val shuffleWriteBytes: Long,
@@ -151,7 +156,10 @@ class TaskData private[spark](
     val taskId: Long,
     val index: Int,
     val attempt: Int,
+    val stageId: Int,
+    val status: String,
     val launchTime: Date,
+    val finishTime: Date,
     val executorId: String,
     val host: String,
     val taskLocality: String,
@@ -170,6 +178,7 @@ class TaskMetrics private[spark](
     val diskBytesSpilled: Long,
     val inputMetrics: Option[InputMetrics],
     val outputMetrics: Option[OutputMetrics],
+    val blockFetchInfos: Seq[BlockFetchInfo],
     val shuffleReadMetrics: Option[ShuffleReadMetrics],
     val shuffleWriteMetrics: Option[ShuffleWriteMetrics])
 
@@ -183,16 +192,26 @@ class OutputMetrics private[spark](
 
 class ShuffleReadMetrics private[spark](
     val remoteBlocksFetched: Int,
+    val remoteBlockFetchInfos: Seq[BlockFetchInfo],
     val localBlocksFetched: Int,
+    val localBlockFetchInfos: Seq[BlockFetchInfo],
     val fetchWaitTime: Long,
     val remoteBytesRead: Long,
     val totalBlocksFetched: Int,
     val recordsRead: Long)
 
+class BlockFetchInfo private[spark](
+    var blockId: BlockId,
+    var bytes: Long,
+    var executorId: Option[String] = None,
+    var host: Option[String] = None) extends Serializable
+
+
 class ShuffleWriteMetrics private[spark](
     val bytesWritten: Long,
     val writeTime: Long,
-    val recordsWritten: Long)
+    val recordsWritten: Long,
+    val dataCharacteristics: Seq[(Any, Int)])
 
 class TaskMetricDistributions private[spark](
     val quantiles: IndexedSeq[Double],

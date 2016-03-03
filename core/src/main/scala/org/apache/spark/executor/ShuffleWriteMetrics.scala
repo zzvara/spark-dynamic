@@ -30,14 +30,17 @@ import org.apache.spark.annotation.DeveloperApi
 class ShuffleWriteMetrics private (
     _bytesWritten: Accumulator[Long],
     _recordsWritten: Accumulator[Long],
-    _writeTime: Accumulator[Long])
+    _writeTime: Accumulator[Long],
+    _dataCharacteristics: Accumulator[Seq[(Any, Int)]])
   extends Serializable {
 
   private[executor] def this(accumMap: Map[String, Accumulator[_]]) {
     this(
-      TaskMetrics.getAccum[Long](accumMap, InternalAccumulator.shuffleWrite.BYTES_WRITTEN),
-      TaskMetrics.getAccum[Long](accumMap, InternalAccumulator.shuffleWrite.RECORDS_WRITTEN),
-      TaskMetrics.getAccum[Long](accumMap, InternalAccumulator.shuffleWrite.WRITE_TIME))
+      TaskMetrics.getAccumulator[Long](accumMap, InternalAccumulator.shuffleWrite.BYTES_WRITTEN),
+      TaskMetrics.getAccumulator[Long](accumMap, InternalAccumulator.shuffleWrite.RECORDS_WRITTEN),
+      TaskMetrics.getAccumulator[Long](accumMap, InternalAccumulator.shuffleWrite.WRITE_TIME),
+      TaskMetrics.getAccumulator[Seq[(Any, Int)]](accumMap,
+        InternalAccumulator.shuffleWrite.DATA_CHARACTERISTICS))
   }
 
   /**
@@ -51,6 +54,12 @@ class ShuffleWriteMetrics private (
    */
   private[spark] def this() {
     this(InternalAccumulator.createShuffleWriteAccums().map { a => (a.name.get, a) }.toMap)
+  }
+
+  def dataCharacteristics: Seq[(Any, Int)] = _dataCharacteristics.localValue
+
+  def compact(): Unit = {
+    _dataCharacteristics.compact()
   }
 
   /**
@@ -68,6 +77,9 @@ class ShuffleWriteMetrics private (
    */
   def writeTime: Long = _writeTime.localValue
 
+  private[spark] def addKeyWritten(k: Any): Unit = {
+    _dataCharacteristics.add(Seq[(Any, Int)](k -> 1))
+  }
   private[spark] def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)
   private[spark] def incWriteTime(v: Long): Unit = _writeTime.add(v)

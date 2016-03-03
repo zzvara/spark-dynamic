@@ -48,9 +48,11 @@ private[spark] case class IteratorValues(iterator: () => Iterator[Any]) extends 
 
 /* Class for returning a fetched block and associated metrics. */
 private[spark] class BlockResult(
+    val blockId: BlockId,
     val data: Iterator[Any],
     val readMethod: DataReadMethod.Value,
-    val bytes: Long)
+    val bytes: Long,
+    val loc: Option[BlockManagerId] = None)
 
 /**
  * Manager running on every node (driver and executors) which provides interfaces for putting and
@@ -441,7 +443,7 @@ private[spark] class BlockManager(
           val result = if (asBlockResult) {
             memoryStore.getValues(blockId).map { iter =>
               val ci = CompletionIterator[Any, Iterator[Any]](iter, releaseLock(blockId))
-              new BlockResult(ci, DataReadMethod.Memory, info.size)
+              new BlockResult(blockId, ci, DataReadMethod.Memory, info.size)
             }
           } else {
             memoryStore.getBytes(blockId)
@@ -471,7 +473,7 @@ private[spark] class BlockManager(
             if (asBlockResult) {
               val iter = CompletionIterator[Any, Iterator[Any]](
                 dataDeserialize(blockId, bytes), releaseLock(blockId))
-              return Some(new BlockResult(iter, DataReadMethod.Disk, info.size))
+              return Some(new BlockResult(blockId, iter, DataReadMethod.Disk, info.size))
             } else {
               return Some(bytes)
             }
@@ -504,14 +506,14 @@ private[spark] class BlockManager(
                 putResult.data match {
                   case Left(it) =>
                     val ci = CompletionIterator[Any, Iterator[Any]](it, releaseLock(blockId))
-                    return Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
+                    return Some(new BlockResult(blockId, ci, DataReadMethod.Disk, info.size))
                   case _ =>
                     // This only happens if we dropped the values back to disk (which is never)
                     throw new SparkException("Memory store did not return an iterator!")
                 }
               } else {
                 val ci = CompletionIterator[Any, Iterator[Any]](values, releaseLock(blockId))
-                return Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
+                return Some(new BlockResult(blockId, ci, DataReadMethod.Disk, info.size))
               }
             }
           }
@@ -582,9 +584,11 @@ private[spark] class BlockManager(
       if (data != null) {
         if (asBlockResult) {
           return Some(new BlockResult(
+            blockId,
             dataDeserialize(blockId, data),
             DataReadMethod.Network,
-            data.limit()))
+            data.limit()),
+            Some(loc))
         } else {
           return Some(data)
         }

@@ -20,6 +20,8 @@ package org.apache.spark
 import java.util.concurrent.atomic.AtomicLong
 import javax.annotation.concurrent.GuardedBy
 
+import org.apache.spark.status.api.v1.BlockFetchInfo
+
 import scala.collection.mutable
 import scala.ref.WeakReference
 
@@ -201,8 +203,45 @@ object AccumulatorParam {
     def zero(initialValue: Seq[T]): Seq[T] = Seq.empty[T]
   }
 
+  private[spark] class MapAccumulatorParam[K, V] extends AccumulatorParam[Map[K, V]] {
+    def addInPlace(t1: Map[K, V], t2: Map[K, V]): Map[K, V] = t1 ++ t2
+    def zero(initialValue: Map[K, V]): Map[K, V] = Map.empty[K, V]
+  }
+
   // For the internal metric that records what blocks are updated in a particular task
   private[spark] object UpdatedBlockStatusesAccumulatorParam
     extends ListAccumulatorParam[(BlockId, BlockStatus)]
 
+  private[spark] object LocalBlockFetchnInfosAccumulatorParam
+    extends ListAccumulatorParam[BlockFetchInfo]
+
+  private[spark] object RemoteBlockFetchnInfosAccumulatorParam
+    extends ListAccumulatorParam[BlockFetchInfo]
+
+  private[spark] object DataCharacteristicsAccumulatorParam
+    extends ListAccumulatorParam[(Any, Int)] {
+    @transient private val sampleRate: Int = 1000
+    @transient private val take: Int = 4
+    private var sampleState: Int = 0
+
+    override def addInPlace(t1: Seq[(Any, Int)], t2: Seq[(Any, Int)]): Seq[(Any, Int)] = {
+      sampleState = sampleState + 1
+      if (sampleState >= sampleRate) {
+        sampleState = 0
+        merge[Any, Int](t1, t2)(_ + _)
+      } else {
+        t1
+      }
+    }
+
+    private def merge[A, B](s1: Seq[(A, B)], s2: Seq[(A, B)])(f: (B, B) => B): Seq[(A, B)] = {
+      (s1 ++ s2).groupBy(_._1).map {
+        case (k, list: Seq[(A, B)]) => (k, list.map(_._2).reduce(f))
+      }.toSeq
+    }
+
+    override def compact(t: Seq[(Any, Int)]): Seq[(Any, Int)] = {
+      t.toSeq.sortBy(_._2).take(take)
+    }
+  }
 }

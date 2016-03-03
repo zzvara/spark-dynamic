@@ -275,6 +275,7 @@ private[spark] class Executor(
           m.setExecutorRunTime((taskFinish - taskStart) - task.executorDeserializeTime)
           m.setJvmGCTime(computeTotalGcTime() - startGCTime)
           m.setResultSerializationTime(afterSerialization - beforeSerialization)
+          m.shuffleWriteMetrics.foreach(_.compact())
         }
 
         // Note: accumulator updates must be collected after TaskMetrics is updated

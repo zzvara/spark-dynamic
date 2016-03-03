@@ -31,14 +31,14 @@ class AllStagesResourceSuite extends SparkFunSuite {
     val tasks = new HashMap[Long, TaskUIData]
     taskLaunchTimes.zipWithIndex.foreach { case (time, idx) =>
       tasks(idx.toLong) = new TaskUIData(
-        new TaskInfo(idx, idx, 1, time, "", "", TaskLocality.ANY, false), None, None)
+        0, new TaskInfo(idx, idx, 1, time, "", "", TaskLocality.ANY, false), None, None)
     }
 
     val stageUiData = new StageUIData()
     stageUiData.taskData = tasks
     val status = StageStatus.ACTIVE
     val stageInfo = new StageInfo(
-      1, 1, "stage 1", 10, Seq.empty, Seq.empty, "details abc", Seq.empty)
+      1, 1, "stage 1", 10, None, Seq.empty, Seq.empty, "details abc", Seq.empty)
     val stageData = AllStagesResource.stageUiToStageData(status, stageInfo, stageUiData, false)
 
     stageData.firstTaskLaunchedTime

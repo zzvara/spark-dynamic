@@ -31,7 +31,7 @@ import org.apache.spark.util.Utils
  * A data type that can be accumulated, ie has an commutative and associative "add" operation,
  * but where the result type, `R`, may be different from the element type being added, `T`.
  *
- * You must define how to add data, and how to merge two of these together.  For some data types,
+ * You must define how to add data, and how to merge two of these together. For some data types,
  * such as a counter, these might be the same operation. In that case, you can use the simpler
  * [[org.apache.spark.Accumulator]]. They won't always be the same, though -- e.g., imagine you are
  * accumulating a set. You will add items to the set, and you will union two sets together.
@@ -211,6 +211,8 @@ class Accumulable[R, T] private (
   }
 
   override def toString: String = if (value_ == null) "null" else value_.toString
+
+  def compact(): Unit = value_ = param.compact(value_)
 }
 
 
@@ -247,6 +249,8 @@ trait AccumulableParam[R, T] extends Serializable {
    * example, if R was a vector of N dimensions, this would return a vector of N zeroes.
    */
   def zero(initialValue: R): R
+
+  def compact(t: R): R = t
 }
 
 

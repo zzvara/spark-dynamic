@@ -47,9 +47,9 @@ class InputMetrics private (
 
   private[executor] def this(accumMap: Map[String, Accumulator[_]]) {
     this(
-      TaskMetrics.getAccum[Long](accumMap, InternalAccumulator.input.BYTES_READ),
-      TaskMetrics.getAccum[Long](accumMap, InternalAccumulator.input.RECORDS_READ),
-      TaskMetrics.getAccum[String](accumMap, InternalAccumulator.input.READ_METHOD))
+      TaskMetrics.getAccumulator[Long](accumMap, InternalAccumulator.input.BYTES_READ),
+      TaskMetrics.getAccumulator[Long](accumMap, InternalAccumulator.input.RECORDS_READ),
+      TaskMetrics.getAccumulator[String](accumMap, InternalAccumulator.input.READ_METHOD))
   }
 
   /**

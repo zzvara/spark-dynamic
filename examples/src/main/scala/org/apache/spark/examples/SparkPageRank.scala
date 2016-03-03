@@ -51,10 +51,11 @@ object SparkPageRank {
 
     showWarning()
 
-    val sparkConf = new SparkConf().setAppName("PageRank")
+    val sparkConf = new SparkConf()
+      .setAppName("PageRank")
     val iters = if (args.length > 1) args(1).toInt else 10
     val ctx = new SparkContext(sparkConf)
-    val lines = ctx.textFile(args(0), 1)
+    val lines = ctx.textFile(args(0), 10)
     val links = lines.map{ s =>
       val parts = s.split("\\s+")
       (parts(0), parts(1))
@@ -69,8 +70,9 @@ object SparkPageRank {
       ranks = contribs.reduceByKey(_ + _).mapValues(0.15 + 0.85 * _)
     }
 
-    val output = ranks.collect()
-    output.foreach(tup => println(tup._1 + " has rank: " + tup._2 + "."))
+    val output = ranks.count()
+
+    Thread.sleep(60 * 60 * 1000)
 
     ctx.stop()
   }

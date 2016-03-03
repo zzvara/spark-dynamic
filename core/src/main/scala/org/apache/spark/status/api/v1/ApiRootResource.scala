@@ -52,6 +52,15 @@ private[v1] class ApiRootResource extends UIRootFromServletContext {
     new OneApplicationResource(uiRoot)
   }
 
+  @Path("applications/{appId}/{jobId}/tasks/{since: \\d+}")
+  def getRecentTasks(
+      @PathParam("appId") appId: String,
+      @PathParam("jobId") jobId: String): RecentTasksResource = {
+    uiRoot.withSparkUI(appId, None) { ui =>
+      new RecentTasksResource(ui)
+    }
+  }
+
   @Path("applications/{appId}/{attemptId}/jobs")
   def getJobs(
       @PathParam("appId") appId: String,
