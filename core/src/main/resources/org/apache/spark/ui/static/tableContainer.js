@@ -81,8 +81,9 @@ Spark.Visualizer.Model.Table = (function () {
                     tasks[i].finished = true;
                     tasks[i].finishTime = taskFinishedEvent.finishTime;
                     tasks[i].histogram =
-                        (typeof taskFinishedEvent.metrics != "undefined")
-                            ? taskFinishedEvent.metrics.shuffleWriteMetrics.dataCharacteristics
+                        (typeof taskFinishedEvent.metrics != "undefined" &&
+                        typeof taskFinishedEvent.metrics.shuffleReadMetrics != "undefined")
+                            ? taskFinishedEvent.metrics.shuffleReadMetrics.dataCharacteristics
                             : [];
 
                     break;
@@ -141,7 +142,7 @@ Spark.Visualizer.Model.Table = (function () {
                 var partNum = 0;
                 for (var stage in tableIndexToStagePartMap[i]) {
                     if (partNum < tableIndexToStagePartMap[i][stage].length) {
-                       partNum =  tableIndexToStagePartMap[i][stage].length;
+                        partNum =  tableIndexToStagePartMap[i][stage].length;
                     }
                 }
 
@@ -174,7 +175,7 @@ Spark.Visualizer.Model.Table = (function () {
                 var partNum = 0;
                 for (var stage in tableIndexToStagePartMap[i]) {
                     if (partNum < tableIndexToStagePartMap[i][stage].length) {
-                       partNum =  tableIndexToStagePartMap[i][stage].length;
+                        partNum =  tableIndexToStagePartMap[i][stage].length;
                     }
                 }
 
