@@ -132,19 +132,26 @@ object AccumulatorParam {
   private[spark] object UpdatedBlockStatusesAccumulatorParam
     extends ListAccumulatorParam[(BlockId, BlockStatus)]
 
-  private[spark] object LocalBlockFetchnInfosAccumulatorParam
+  private[spark] object LocalBlockFetchInfosAccumulatorParam
     extends ListAccumulatorParam[BlockFetchInfo]
 
-  private[spark] object RemoteBlockFetchnInfosAccumulatorParam
+  private[spark] object RemoteBlockFetchInfosAccumulatorParam
     extends ListAccumulatorParam[BlockFetchInfo]
 
-  private[spark] object DataCharacteristicsAccumulatorParam
+  private[spark] object ShuffleWriteDataCharacteristicsAccumulatorParam
+    extends DataCharacteristicsAccumulatorParam
+
+  private[spark] object ShuffleReadDataCharacteristicsAccumulatorParam
+    extends DataCharacteristicsAccumulatorParam
+
+  private[spark] class DataCharacteristicsAccumulatorParam
     extends ListAccumulatorParam[(Any, Int)] {
-    @transient private val sampleRate: Int = 1000
+    private val sampleRate: Int = 1000
     @transient private val take: Int = 4
     private var sampleState: Int = 0
 
-    override def addInPlace(t1: Seq[(Any, Int)], t2: Seq[(Any, Int)]): Seq[(Any, Int)] = {
+
+    override def addAccumulator(t1: Seq[(Any, Int)], t2: Seq[(Any, Int)]): Seq[(Any, Int)] = {
       sampleState = sampleState + 1
       if (sampleState >= sampleRate) {
         sampleState = 0
@@ -152,6 +159,10 @@ object AccumulatorParam {
       } else {
         t1
       }
+    }
+
+    override def addInPlace(t1: Seq[(Any, Int)], t2: Seq[(Any, Int)]): Seq[(Any, Int)] = {
+      merge[Any, Int](t1, t2)(_ + _)
     }
 
     private def merge[A, B](s1: Seq[(A, B)], s2: Seq[(A, B)])(f: (B, B) => B): Seq[(A, B)] = {
@@ -164,4 +175,6 @@ object AccumulatorParam {
       t.toSeq.sortBy(_._2).take(take)
     }
   }
+
+  private[spark] object DataCharacteristicsAccumulatorParam
 }

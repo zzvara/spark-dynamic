@@ -60,6 +60,7 @@ private[spark] object InternalAccumulator {
     val LOCAL_BYTES_READ = SHUFFLE_READ_METRICS_PREFIX + "localBytesRead"
     val FETCH_WAIT_TIME = SHUFFLE_READ_METRICS_PREFIX + "fetchWaitTime"
     val RECORDS_READ = SHUFFLE_READ_METRICS_PREFIX + "recordsRead"
+    val DATA_CHARACTERISTICS = SHUFFLE_READ_METRICS_PREFIX + "dataCharacteristics"
   }
 
   // Names of shuffle write metrics
