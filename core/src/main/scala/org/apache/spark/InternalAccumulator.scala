@@ -63,6 +63,7 @@ private[spark] object InternalAccumulator {
     val LOCAL_BYTES_READ = SHUFFLE_READ_METRICS_PREFIX + "localBytesRead"
     val FETCH_WAIT_TIME = SHUFFLE_READ_METRICS_PREFIX + "fetchWaitTime"
     val RECORDS_READ = SHUFFLE_READ_METRICS_PREFIX + "recordsRead"
+    val DATA_CHARACTERISTICS = SHUFFLE_READ_METRICS_PREFIX + "dataCharacteristics"
   }
 
   // Names of shuffle write metrics
@@ -99,13 +100,15 @@ private[spark] object InternalAccumulator {
       case p @ LongAccumulatorParam => newMetric[Long](0L, name, p)
       case p @ IntAccumulatorParam => newMetric[Int](0, name, p)
       case p @ StringAccumulatorParam => newMetric[String]("", name, p)
-      case p @ LocalBlockFetchnInfosAccumulatorParam =>
+      case p @ LocalBlockFetchInfosAccumulatorParam =>
         newMetric[Seq[BlockFetchInfo]](new ArrayBuffer[BlockFetchInfo](), name, p)
-      case p @ RemoteBlockFetchnInfosAccumulatorParam =>
+      case p @ RemoteBlockFetchInfosAccumulatorParam =>
         newMetric[Seq[BlockFetchInfo]](new ArrayBuffer[BlockFetchInfo](), name, p)
       case p @ UpdatedBlockStatusesAccumulatorParam =>
         newMetric[Seq[(BlockId, BlockStatus)]](Seq(), name, p)
-      case p @ DataCharacteristicsAccumulatorParam =>
+      case p @ ShuffleReadDataCharacteristicsAccumulatorParam =>
+        newMetric[Seq[(Any, Int)]](new ArrayBuffer[(Any, Int)](), name, p)
+      case p @ ShuffleWriteDataCharacteristicsAccumulatorParam =>
         newMetric[Seq[(Any, Int)]](new ArrayBuffer[(Any, Int)](), name, p)
       case p => throw new IllegalArgumentException(
         s"unsupported accumulator param '${p.getClass.getSimpleName}' for metric '$name'.")
@@ -121,14 +124,15 @@ private[spark] object InternalAccumulator {
       s"internal accumulator name must start with '$METRICS_PREFIX': $name")
     name match {
       case UPDATED_BLOCK_STATUSES => UpdatedBlockStatusesAccumulatorParam
-      case BLOCK_FETCH_INFOS => LocalBlockFetchnInfosAccumulatorParam
+      case BLOCK_FETCH_INFOS => LocalBlockFetchInfosAccumulatorParam
       case shuffleRead.LOCAL_BLOCKS_FETCHED => IntAccumulatorParam
-      case shuffleRead.LOCAL_BLOCK_FETCH_INFOS => LocalBlockFetchnInfosAccumulatorParam
+      case shuffleRead.LOCAL_BLOCK_FETCH_INFOS => LocalBlockFetchInfosAccumulatorParam
       case shuffleRead.REMOTE_BLOCKS_FETCHED => IntAccumulatorParam
-      case shuffleRead.REMOTE_BLOCK_FETCH_INFOS => RemoteBlockFetchnInfosAccumulatorParam
+      case shuffleRead.REMOTE_BLOCK_FETCH_INFOS => RemoteBlockFetchInfosAccumulatorParam
       case input.READ_METHOD => StringAccumulatorParam
       case output.WRITE_METHOD => StringAccumulatorParam
-      case shuffleWrite.DATA_CHARACTERISTICS => DataCharacteristicsAccumulatorParam
+      case shuffleWrite.DATA_CHARACTERISTICS => ShuffleWriteDataCharacteristicsAccumulatorParam
+      case shuffleRead.DATA_CHARACTERISTICS => ShuffleReadDataCharacteristicsAccumulatorParam
       case _ => LongAccumulatorParam
     }
   }
@@ -167,7 +171,8 @@ private[spark] object InternalAccumulator {
       shuffleRead.REMOTE_BYTES_READ,
       shuffleRead.LOCAL_BYTES_READ,
       shuffleRead.FETCH_WAIT_TIME,
-      shuffleRead.RECORDS_READ).map(create)
+      shuffleRead.RECORDS_READ,
+      shuffleRead.DATA_CHARACTERISTICS).map(create)
   }
 
   /**

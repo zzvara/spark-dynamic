@@ -311,6 +311,7 @@ class TaskMetrics private[spark] (initialAccums: Seq[Accumulator[_]])
       metrics.setRecordsRead(tempShuffleReadMetrics.map(_.recordsRead).sum)
       metrics.setRemoteBlockFetchInfos(tempShuffleReadMetrics.flatMap(_.remoteBlockFetchInfos()))
       metrics.setLocalBlockFetchInfos(tempShuffleReadMetrics.flatMap(_.localBlockFetchInfos()))
+      metrics.setDataCharacteristics(tempShuffleReadMetrics.flatMap(_.dataCharacteristics()))
       _shuffleReadMetrics = Some(metrics)
     }
   }

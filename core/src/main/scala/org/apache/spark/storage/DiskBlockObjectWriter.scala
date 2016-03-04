@@ -20,7 +20,7 @@ package org.apache.spark.storage
 import java.io.{BufferedOutputStream, File, FileOutputStream, OutputStream}
 import java.nio.channels.FileChannel
 
-import org.apache.spark.Logging
+import org.apache.spark.{SparkEnv, Logging}
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.serializer.{SerializationStream, SerializerInstance}
 import org.apache.spark.util.Utils
@@ -80,6 +80,9 @@ private[spark] class DiskBlockObjectWriter(
    * output bytes written since the latter is expensive to do for each record.
    */
   private var numRecordsWritten = 0
+
+  private val recordCharacteristics: Boolean =
+    SparkEnv.get.conf.getBoolean("spark.metrics.shuffleWrite.dataCharacteristics", false)
 
   def open(): DiskBlockObjectWriter = {
     if (hasBeenClosed) {
@@ -181,7 +184,9 @@ private[spark] class DiskBlockObjectWriter(
       open()
     }
 
-    writeMetrics.addKeyWritten(key)
+    if (recordCharacteristics) {
+      writeMetrics.addKeyWritten(key)
+    }
 
     objOut.writeKey(key)
     objOut.writeValue(value)
