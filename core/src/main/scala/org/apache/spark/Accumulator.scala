@@ -145,36 +145,66 @@ object AccumulatorParam {
     extends DataCharacteristicsAccumulatorParam
 
   private[spark] class DataCharacteristicsAccumulatorParam
-    extends ListAccumulatorParam[(Any, Int)] {
-    private val sampleRate: Int = 1000
-    @transient private val take: Int = 4
-    private var sampleState: Int = 0
+    extends MapAccumulatorParam[Any, Double] {
+    @transient private val TAKE: Int = 4
+    @transient private val HISTOGRAM_SCALE_BOUNDARY: Double = 20
+    @transient private val BACKOFF_FACTOR: Double = 2.0
+    @transient private val DROP_BOUNDARY: Double = 0.01
+    @transient private val HISTOGRAM_SIZE_BOUNDARY: Int = 100
+    @transient private val HISTOGRAM_COMPACTION: Int = 60
+    /**
+      * Rate in which records are put into the histogram.
+      * Value represent that each n-th input is recorded.
+      */
+    private var sampleRate: Double = 1.0
+    /**
+      * Size or width of the histogram, that is equal to the size of the map.
+      */
+    private var histogramSize: Int = 0
 
-
-    override def addAccumulator(t1: Seq[(Any, Int)], t2: Seq[(Any, Int)]): Seq[(Any, Int)] = {
-      sampleState = sampleState + 1
-      if (sampleState >= sampleRate) {
-        sampleState = 0
-        merge[Any, Int](t1, t2)(_ + _)
-      } else {
-        t1
+    override def addAccumulator(r: Map[Any, Double], t: Map[Any, Double]): Map[Any, Double] = {
+      val key = t.toList.head._1
+      if (Math.random() <= sampleRate) { // Decided to record the key.
+        val updatedHistogram = r + ((key,
+          r.get(key) match {
+            case Some(value) => value + 1.0
+            case None =>
+              histogramSize = histogramSize + 1
+              sampleRate
+          }
+        ))
+        // Decide if scaling is needed.
+        if (histogramSize * sampleRate >= HISTOGRAM_SCALE_BOUNDARY) {
+          sampleRate = sampleRate / BACKOFF_FACTOR
+          val scaledHistogram =
+            updatedHistogram
+              .mapValues(x => x / BACKOFF_FACTOR)
+              .filter(pair => pair._2 > DROP_BOUNDARY)
+          // Decide if additional cut is needed.y
+          if (histogramSize > HISTOGRAM_SIZE_BOUNDARY) {
+            histogramSize = HISTOGRAM_COMPACTION
+            scaledHistogram.toSeq.sortBy(-_._2).take(HISTOGRAM_COMPACTION).toMap
+          } else {
+            scaledHistogram
+          }
+        } else { // No need to cut the histogram.
+          updatedHistogram
+        }
+      } else { // Histogram does not change.
+        r
       }
     }
 
-    override def addInPlace(t1: Seq[(Any, Int)], t2: Seq[(Any, Int)]): Seq[(Any, Int)] = {
-      merge[Any, Int](t1, t2)(_ + _)
+    override def addInPlace(t1: Map[Any, Double], t2: Map[Any, Double]): Map[Any, Double] = {
+      merge[Any, Double](t1, t2)(_ + _)(0.0)
     }
 
-    private def merge[A, B](s1: Seq[(A, B)], s2: Seq[(A, B)])(f: (B, B) => B): Seq[(A, B)] = {
-      (s1 ++ s2).groupBy(_._1).map {
-        case (k, list: Seq[(A, B)]) => (k, list.map(_._2).reduce(f))
-      }.toSeq
+    private def merge[A, B](s1: Map[A, B], s2: Map[A, B])(f: (B, B) => B)(zero: B): Map[A, B] = {
+      s1 ++ s2.map{ case (k, v) => k -> f(v, s1.getOrElse(k, zero)) }
     }
 
-    override def compact(t: Seq[(Any, Int)]): Seq[(Any, Int)] = {
-      t.toSeq.sortBy(_._2).take(take)
+    override def compact(t: Map[Any, Double]): Map[Any, Double] = {
+      t.toSeq.sortBy(-_._2).take(TAKE).toMap
     }
   }
-
-  private[spark] object DataCharacteristicsAccumulatorParam
 }

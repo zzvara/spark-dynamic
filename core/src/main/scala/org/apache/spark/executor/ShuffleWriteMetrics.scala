@@ -33,7 +33,7 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   private[executor] val _writeTime = new LongAccumulator
   private[executor] val _dataCharacteristics = new Accumulator[Seq[(Any, Int)]]
 
-  def dataCharacteristics: Seq[(Any, Int)] = _dataCharacteristics.localValue
+  def dataCharacteristics: Map[Any, Double] = _dataCharacteristics.localValue
 
   def compact(): Unit = {
     _dataCharacteristics.compact()
@@ -55,7 +55,7 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   def writeTime: Long = _writeTime.sum
 
   private[spark] def addKeyWritten(k: Any): Unit = {
-    _dataCharacteristics.add(Seq[(Any, Int)](k -> 1))
+    _dataCharacteristics.add(Map[Any, Double](k -> 1.0))
   }
   private[spark] def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)

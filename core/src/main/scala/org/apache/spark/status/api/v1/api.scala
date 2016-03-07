@@ -203,7 +203,7 @@ class ShuffleReadMetrics private[spark](
     val remoteBytesRead: Long,
     val localBytesRead: Long,
     val recordsRead: Long,
-    val dataCharacteristics: Seq[(Any, Int)])
+    val dataCharacteristics: Map[Any, Double])
 
 class BlockFetchInfo private[spark](
     var blockId: BlockId,
@@ -216,7 +216,7 @@ class ShuffleWriteMetrics private[spark](
     val bytesWritten: Long,
     val writeTime: Long,
     val recordsWritten: Long,
-    val dataCharacteristics: Seq[(Any, Int)])
+    val dataCharacteristics: Map[Any, Double])
 
 class TaskMetricDistributions private[spark](
     val quantiles: IndexedSeq[Double],

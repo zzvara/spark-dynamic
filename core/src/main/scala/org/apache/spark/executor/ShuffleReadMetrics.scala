@@ -47,7 +47,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
 
   def dataCharacteristics(): Seq[(Any, Int)] = _dataCharacteristics.localValue
 
-  def setDataCharacteristics(s: Seq[(Any, Int)]) : Unit = {
+  def setDataCharacteristics(s: Map[Any, Double]) : Unit = {
     _dataCharacteristics.setValue(s)
   }
 
@@ -55,7 +55,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
     if (recordCharacteristics) {
       iter.map {
         pair =>
-          _dataCharacteristics.add(Seq[(Any, Int)](pair._1 -> 1))
+          _dataCharacteristics.add(Map[Any, Double](pair._1 -> 1.0))
           pair
       }
     } else {
