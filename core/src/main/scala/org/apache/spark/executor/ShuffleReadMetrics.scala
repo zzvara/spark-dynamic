@@ -39,7 +39,7 @@ class ShuffleReadMetrics private (
     _localBytesRead: Accumulator[Long],
     _fetchWaitTime: Accumulator[Long],
     _recordsRead: Accumulator[Long],
-    _dataCharacteristics: Accumulator[Seq[(Any, Int)]])
+    _dataCharacteristics: Accumulator[Map[Any, Double]])
   extends Serializable with Logging {
 
   val recordCharacteristics: Boolean =
@@ -59,7 +59,7 @@ class ShuffleReadMetrics private (
       TaskMetrics.getAccumulator[Long](accumMap, InternalAccumulator.shuffleRead.LOCAL_BYTES_READ),
       TaskMetrics.getAccumulator[Long](accumMap, InternalAccumulator.shuffleRead.FETCH_WAIT_TIME),
       TaskMetrics.getAccumulator[Long](accumMap, InternalAccumulator.shuffleRead.RECORDS_READ),
-      TaskMetrics.getAccumulator[Seq[(Any, Int)]](accumMap,
+      TaskMetrics.getAccumulator[Map[Any, Double]](accumMap,
         InternalAccumulator.shuffleRead.DATA_CHARACTERISTICS))
   }
 
@@ -77,9 +77,9 @@ class ShuffleReadMetrics private (
     this(InternalAccumulator.createShuffleReadAccumulables().map { a => (a.name.get, a) }.toMap)
   }
 
-  def dataCharacteristics(): Seq[(Any, Int)] = _dataCharacteristics.localValue
+  def dataCharacteristics(): Map[Any, Double] = _dataCharacteristics.localValue
 
-  def setDataCharacteristics(s: Seq[(Any, Int)]) : Unit = {
+  def setDataCharacteristics(s: Map[Any, Double]) : Unit = {
     _dataCharacteristics.setValue(s)
   }
 
@@ -87,7 +87,7 @@ class ShuffleReadMetrics private (
     if (recordCharacteristics) {
       iter.map {
         pair =>
-          _dataCharacteristics.add(Seq[(Any, Int)](pair._1 -> 1))
+          _dataCharacteristics.add(Map[Any, Double](pair._1 -> 1.0))
           pair
       }
     } else {

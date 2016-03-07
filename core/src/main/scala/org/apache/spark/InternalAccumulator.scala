@@ -20,6 +20,7 @@ package org.apache.spark
 import org.apache.spark.status.api.v1.BlockFetchInfo
 import org.apache.spark.storage.{BlockId, BlockStatus}
 
+import scala.collection.immutable.HashMap
 import scala.collection.mutable.ArrayBuffer
 
 
@@ -107,9 +108,9 @@ private[spark] object InternalAccumulator {
       case p @ UpdatedBlockStatusesAccumulatorParam =>
         newMetric[Seq[(BlockId, BlockStatus)]](Seq(), name, p)
       case p @ ShuffleReadDataCharacteristicsAccumulatorParam =>
-        newMetric[Seq[(Any, Int)]](new ArrayBuffer[(Any, Int)](), name, p)
+        newMetric[Map[Any, Double]](new HashMap[Any, Double](), name, p)
       case p @ ShuffleWriteDataCharacteristicsAccumulatorParam =>
-        newMetric[Seq[(Any, Int)]](new ArrayBuffer[(Any, Int)](), name, p)
+        newMetric[Map[Any, Double]](new HashMap[Any, Double](), name, p)
       case p => throw new IllegalArgumentException(
         s"unsupported accumulator param '${p.getClass.getSimpleName}' for metric '$name'.")
     }

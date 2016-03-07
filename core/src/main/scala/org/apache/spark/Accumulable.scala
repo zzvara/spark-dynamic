@@ -135,7 +135,7 @@ class Accumulable[R, T] private (
    * Normally, a user will not want to use this version, but will instead call `+=`.
    * @param term the other `R` that will get merged with this
    */
-  def ++= (term: R) { value_ = param.addInPlace(value_, term)}
+  def ++= (term: R) { value_ = param.addInPlace(value_, term) }
 
   /**
    * Merge two accumulable objects together
@@ -143,7 +143,7 @@ class Accumulable[R, T] private (
    * Normally, a user will not want to use this version, but will instead call `add`.
    * @param term the other `R` that will get merged with this
    */
-  def merge(term: R) { value_ = param.addInPlace(value_, term)}
+  def merge(term: R) { value_ = param.addInPlace(value_, term) }
 
   /**
    * Access the accumulator's current value; only allowed on driver.
@@ -212,7 +212,10 @@ class Accumulable[R, T] private (
 
   override def toString: String = if (value_ == null) "null" else value_.toString
 
-  def compact(): Unit = value_ = param.compact(value_)
+  def compact() {
+    val temp = param.compact(value_)
+    value_ = temp
+  }
 }
 
 
