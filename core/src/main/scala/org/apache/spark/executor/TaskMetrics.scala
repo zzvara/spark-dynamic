@@ -95,6 +95,8 @@ class TaskMetrics private[spark] (initialAccums: Seq[Accumulator[_]])
   private val _blockFetches = TaskMetrics
     .getAccumulator[Seq[BlockFetchInfo]](initialAccumsMap, BLOCK_FETCH_INFOS)
 
+  var repartitioningInfo: Option[RepartitioningInfo] = None
+
   private[spark] def addBlockFetch(blockResult: BlockResult) : Unit = {
     if (!blockResult.blockId.isShuffle) {
       logInfo(s"Recording block result ${blockResult.blockId}.")

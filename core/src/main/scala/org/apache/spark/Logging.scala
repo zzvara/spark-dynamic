@@ -95,7 +95,7 @@ private[spark] trait Logging {
     log.isTraceEnabled
   }
 
-  private def initializeIfNecessary() {
+  protected def initializeIfNecessary() {
     if (!Logging.initialized) {
       Logging.initLock.synchronized {
         if (!Logging.initialized) {

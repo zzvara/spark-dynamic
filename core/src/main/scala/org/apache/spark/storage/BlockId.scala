@@ -133,3 +133,9 @@ object BlockId {
       throw new IllegalStateException("Unrecognized BlockId: " + id)
   }
 }
+
+private[spark] case class RepartitionBlockId(id: String, numPartitions: Int)
+  extends BlockId {
+
+  override def name: String = id + "_" + numPartitions
+}

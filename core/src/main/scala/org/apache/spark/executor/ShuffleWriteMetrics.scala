@@ -17,7 +17,9 @@
 
 package org.apache.spark.executor
 
-import org.apache.spark.{Accumulator, InternalAccumulator}
+import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
+import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristics
+import org.apache.spark.{ColorfulLogging, Partitioner, Accumulator, InternalAccumulator}
 import org.apache.spark.annotation.DeveloperApi
 
 
@@ -32,7 +34,10 @@ class ShuffleWriteMetrics private (
     _recordsWritten: Accumulator[Long],
     _writeTime: Accumulator[Long],
     _dataCharacteristics: Accumulator[Map[Any, Double]])
-  extends Serializable {
+  extends ColorfulLogging with Serializable {
+
+  private var _repartitioner: Option[Partitioner] = None
+  private var _repartitioningIsFinished = false
 
   private[executor] def this(accumMap: Map[String, Accumulator[_]]) {
     this(
@@ -56,7 +61,34 @@ class ShuffleWriteMetrics private (
     this(InternalAccumulator.createShuffleWriteAccums().map { a => (a.name.get, a) }.toMap)
   }
 
-  def dataCharacteristics: Map[Any, Double] = _dataCharacteristics.localValue
+  /**
+    * @todo Getter should not make it a None.
+    */
+  def repartitioner: Option[Partitioner] = {
+    val result = _repartitioner
+    _repartitioner = None
+    result
+  }
+
+  private[spark] def setRepartitioner(repartitioner: Partitioner) {
+    /*
+    logDebug(s"Received repartitioner for stage ${stageID.getOrElse("?")}" +
+      s" task ${taskID.getOrElse("?")}", "DRRepartitioning")
+      */
+    _repartitioner = Some(repartitioner)
+  }
+
+  /**
+    * @todo Why is there a flag?
+    */
+  private[spark] def finishRepartitioning(flag: Boolean = true) {
+    if (flag) {
+      _repartitioningIsFinished = true
+      // logInfo(s"Repartitioning finished for stage ${stageID.get}.", "DRRepartitioning")
+    }
+  }
+
+  def dataCharacteristics: DataCharacteristics[Any] = _dataCharacteristics
 
   def compact(): Unit = {
     _dataCharacteristics.compact()
@@ -99,4 +131,34 @@ class ShuffleWriteMetrics private (
   @deprecated("use recordsWritten instead", "2.0.0")
   def shuffleRecordsWritten: Long = recordsWritten
 
+}
+
+object ShuffleWriteMetrics {
+  type DataCharacteristics[T] = Accumulator[Map[T, Double]]
+}
+
+class RepartitioningInfo(
+  val stageID: Int,
+  val taskID: Long,
+  val executorName: String,
+  val taskMetrics: TaskMetrics,
+  var repartitioner: Option[Partitioner] = None,
+  var version: Option[Int] = Some(0)) extends Serializable with ColorfulLogging {
+
+  var trackingFinished = false
+
+  def updateRepartitioner(repartitioner: Partitioner, version: Int): Unit = {
+    this.repartitioner = Some(repartitioner)
+    this.version = Some(version)
+  }
+
+  def getHistogramMeta: Option[DataCharacteristicsAccumulatorParam] = {
+    taskMetrics.shuffleWriteMetrics.map {
+      _.dataCharacteristics.getParam.asInstanceOf[DataCharacteristicsAccumulatorParam]
+    }
+  }
+
+  def finishTracking(): Unit = {
+    trackingFinished = true
+  }
 }

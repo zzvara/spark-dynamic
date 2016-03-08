@@ -24,7 +24,7 @@ import scala.collection.mutable.{Buffer, HashMap, ListBuffer}
 import scala.xml.{Node, NodeSeq, Unparsed, Utility}
 
 import org.apache.spark.JobExecutionStatus
-import org.apache.spark.scheduler.StageInfo
+import org.apache.spark.scheduler.{ShuffleStageInfo, StageInfo}
 import org.apache.spark.ui.{ToolTips, UIUtils, WebUIPage}
 import org.apache.spark.ui.jobs.UIData.ExecutorUIData
 
@@ -203,7 +203,7 @@ private[ui] class JobPage(parent: JobsTab) extends WebUIPage("job") {
         // This could be empty if the JobProgressListener hasn't received information about the
         // stage or if the stage information has been garbage collected
         listener.stageIdToInfo.getOrElse(stageId,
-          new StageInfo(stageId, 0, "Unknown", 0, None, Seq.empty, Seq.empty, "Unknown"))
+          new ShuffleStageInfo(stageId, 0, "Unknown", 0, None, Seq.empty, Seq.empty, "Unknown"))
       }
 
       val activeStages = Buffer[StageInfo]()

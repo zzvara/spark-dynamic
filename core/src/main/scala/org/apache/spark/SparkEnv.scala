@@ -57,6 +57,7 @@ class SparkEnv (
     val serializer: Serializer,
     val closureSerializer: Serializer,
     val mapOutputTracker: MapOutputTracker,
+    val repartitioningTracker: RepartitioningTracker,
     val shuffleManager: ShuffleManager,
     val broadcastManager: BroadcastManager,
     val blockTransferService: BlockTransferService,
@@ -133,6 +134,15 @@ class SparkEnv (
     synchronized {
       val key = (pythonExec, envVars)
       pythonWorkers.get(key).foreach(_.releaseWorker(worker))
+    }
+  }
+
+  def repartitioningWorker(): RepartitioningTrackerWorker = {
+    repartitioningTracker match {
+      case master: RepartitioningTrackerMaster =>
+        master.getLocalWorker.get
+      case _ =>
+        repartitioningTracker.asInstanceOf[RepartitioningTrackerWorker]
     }
   }
 }
@@ -301,6 +311,32 @@ object SparkEnv extends Logging {
       new MapOutputTrackerMasterEndpoint(
         rpcEnv, mapOutputTracker.asInstanceOf[MapOutputTrackerMaster], conf))
 
+    val repartitioningTracker = if (isDriver) {
+      val repartitioningTrackerMaster = new RepartitioningTrackerMaster(rpcEnv, conf)
+
+      repartitioningTrackerMaster.master =
+        registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,
+          repartitioningTrackerMaster)
+
+      listenerBus.addListener(repartitioningTrackerMaster)
+
+      if (isLocal) {
+        repartitioningTrackerMaster.initializeLocalWorker()
+      }
+
+      repartitioningTrackerMaster
+    } else {
+      val repartitioningTrackerWorker = new RepartitioningTrackerWorker(rpcEnv, conf, executorId)
+
+      repartitioningTrackerWorker.master
+        = registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,
+        repartitioningTrackerWorker.asInstanceOf[RepartitioningTrackerMaster])
+
+      repartitioningTrackerWorker.register()
+
+      repartitioningTrackerWorker
+    }
+
     // Let the user specify short names for shuffle managers
     val shortShuffleMgrNames = Map(
       "hash" -> "org.apache.spark.shuffle.hash.HashShuffleManager",
@@ -369,6 +405,7 @@ object SparkEnv extends Logging {
       serializer,
       closureSerializer,
       mapOutputTracker,
+      repartitioningTracker,
       shuffleManager,
       broadcastManager,
       blockTransferService,

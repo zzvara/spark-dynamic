@@ -20,13 +20,15 @@ package org.apache.spark.util.collection
 import java.io._
 import java.util.Comparator
 
+import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 import com.google.common.io.ByteStreams
 
 import org.apache.spark._
-import org.apache.spark.executor.ShuffleWriteMetrics
+import org.apache.spark.executor.{RepartitioningInfo, ShuffleWriteMetrics}
 import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.serializer._
 import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter}
@@ -89,10 +91,11 @@ import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter}
 private[spark] class ExternalSorter[K, V, C](
     context: TaskContext,
     aggregator: Option[Aggregator[K, V, C]] = None,
-    partitioner: Option[Partitioner] = None,
+    var partitioner: Option[Partitioner] = None,
     ordering: Option[Ordering[K]] = None,
-    serializer: Option[Serializer] = None)
-  extends Logging
+    serializer: Option[Serializer] = None,
+    repartitioningInfo: Option[RepartitioningInfo] = None)
+  extends ColorfulLogging
   with Spillable[WritablePartitionedPairCollection[K, C]] {
 
   override protected[this] def taskMemoryManager: TaskMemoryManager = context.taskMemoryManager()
@@ -166,7 +169,8 @@ private[spark] class ExternalSorter[K, V, C](
     serializerBatchSizes: Array[Long],
     elementsPerPartition: Array[Long])
 
-  private val spills = new ArrayBuffer[SpilledFile]
+  private var spills = new ArrayBuffer[SpilledFile]
+  private var oldSpills = new ArrayBuffer[SpilledFile]
 
   /**
    * Number of files this sorter has spilled so far.
@@ -174,7 +178,33 @@ private[spark] class ExternalSorter[K, V, C](
    */
   private[spark] def numSpills: Int = spills.size
 
+
+  private var isRepartitioning = false
+  private def getRepartitioner: Option[Partitioner] = repartitioningInfo match {
+    case Some(ri) => ri.repartitioner
+    case None => None
+  }
+
+  private def getVersion: Option[Int] = repartitioningInfo match {
+    case Some(ri) => ri.version
+    case None => None
+  }
+
+  if(getRepartitioner.isDefined) partitioner = getRepartitioner
+
+  private var newPartitioner: Option[Partitioner] = None
+  private var version: Option[Int] = getVersion
+
+  private def isVersionChanged: Boolean = {
+    version != getVersion
+  }
+
+  val taskInfo = s"stage ${repartitioningInfo.map(_.stageID).getOrElse("unknown")}" +
+                 s"task ${repartitioningInfo.map(_.taskID).getOrElse("unknown")}"
+
   def insertAll(records: Iterator[Product2[K, V]]): Unit = {
+    logDebug(s"Started execution of $taskInfo with partitioner $partitioner",
+              "DRRepartitioning", "DRDebug")
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
 
@@ -186,21 +216,71 @@ private[spark] class ExternalSorter[K, V, C](
       val update = (hadValue: Boolean, oldValue: C) => {
         if (hadValue) mergeValue(oldValue, kv._2) else createCombiner(kv._2)
       }
-      while (records.hasNext) {
+
+      /**
+        * @todo Do a huge refactor!
+        */
+      while (records.hasNext && checkAndDoRepartitioning()) {
         addElementsRead()
         kv = records.next()
+
+        val partitionId = getPartition(kv._1)
+
         map.changeValue((getPartition(kv._1), kv._1), update)
+        maybeSpillCollection(usingMap = true)
+      }
+      if(records.hasNext) {
+        logInfo(s"Stopped building histogram for $taskInfo.", "DRHistogram", "DRDebug")
+      }
+      while(records.hasNext) {
+        addElementsRead()
+        kv = records.next()
+        val partitionId = getPartition(kv._1)
+        map.changeValue((partitionId, kv._1), update)
         maybeSpillCollection(usingMap = true)
       }
     } else {
       // Stick values into our buffer
-      while (records.hasNext) {
+      while (records.hasNext && checkAndDoRepartitioning()) {
         addElementsRead()
         val kv = records.next()
-        buffer.insert(getPartition(kv._1), kv._1, kv._2.asInstanceOf[C])
+        val partitionId = getPartition(kv._1)
+        buffer.insert(partitionId, kv._1, kv._2.asInstanceOf[C])
+        maybeSpillCollection(usingMap = false)
+      }
+      if(records.hasNext) {
+        logInfo(s"Stopped building histogram for $taskInfo.", "DRHistogram", "DRDebug")
+      }
+      while(records.hasNext) {
+        addElementsRead()
+        val kv = records.next()
+        val partitionId = getPartition(kv._1)
+        buffer.insert(partitionId, kv._1, kv._2.asInstanceOf[C])
         maybeSpillCollection(usingMap = false)
       }
     }
+
+    logDebug(s"Finished execution of $taskInfo.", "strongBlue")
+  }
+
+  private def checkAndDoRepartitioning(): Boolean = {
+    if (isVersionChanged) {
+      // TODO repartitioning more times when version jumps up more than one
+      version = getVersion
+      logDebug(s"Started repartitioning for $taskInfo.", "DRRepartitioning", "DRDebug")
+      val before = _elementsRead
+      logInfo(s"Number of seen records before repartitioning $taskInfo: $before", "DRDebug")
+      initiateRepartitioning(
+        getRepartitioner.getOrElse(throw new RuntimeException("Repartitioner not found!")))
+      repartition()
+      logDebug(s"Finished repartitioning for $taskInfo.", "DRRepartitioning")
+      val after = _elementsRead
+      logInfo(s"Number of seen records after repartitioning $taskInfo: $after", "DRDebug")
+      if (before != after) {
+        throw new RuntimeException(s"Repartitioning failed for $taskInfo.")
+      }
+    }
+    version.isDefined
   }
 
   /**
@@ -225,6 +305,15 @@ private[spark] class ExternalSorter[K, V, C](
     if (estimatedSize > _peakMemoryUsedBytes) {
       _peakMemoryUsedBytes = estimatedSize
     }
+  }
+
+  protected[this] def spill(
+    collection: WritablePartitionedPairCollection[K, C], blockId: BlockId, file: File): Unit = {
+    // Because these files may be read during shuffle, their compression must be controlled by
+    // spark.shuffle.compress instead of spark.shuffle.spill.compress, so we need to use
+    // createTempShuffleBlock here; see SPARK-3426 for more context.
+    val (blockId, file) = diskBlockManager.createTempShuffleBlock()
+    spill(collection, blockId, file)
   }
 
   /**
@@ -274,7 +363,8 @@ private[spark] class ExternalSorter[K, V, C](
       while (it.hasNext) {
         val partitionId = it.nextPartition()
         require(partitionId >= 0 && partitionId < numPartitions,
-          s"partition Id: ${partitionId} should be in the range [0, ${numPartitions})")
+          s"partition Id: $partitionId should be in the range [0, $numPartitions)")
+        if(isRepartitioning) addElementsRead()
         it.writeNext(writer)
         elementsPerPartition(partitionId) += 1
         objectsWritten += 1
@@ -469,6 +559,7 @@ private[spark] class ExternalSorter[K, V, C](
     var batchId = 0
     var indexInBatch = 0
     var lastPartitionId = 0
+    val numPartitions = spill.elementsPerPartition.length
 
     skipToNextPartition()
 
@@ -708,14 +799,14 @@ private[spark] class ExternalSorter[K, V, C](
     (0 until numPartitions).iterator.map(p => (p, new IteratorForPartition(p, buffered)))
   }
 
+
   /**
    * An iterator that reads only the elements for a given partition ID from an underlying buffered
    * stream, assuming this partition is the next one to be read. Used to make it easier to return
    * partitioned iterators from our in-memory collection.
    */
   private[this] class IteratorForPartition(partitionId: Int, data: BufferedIterator[((Int, K), C)])
-    extends Iterator[Product2[K, C]]
-  {
+    extends Iterator[Product2[K, C]] {
     override def hasNext: Boolean = data.hasNext && data.head._1._1 == partitionId
 
     override def next(): Product2[K, C] = {
@@ -725,5 +816,112 @@ private[spark] class ExternalSorter[K, V, C](
       val elem = data.next()
       (elem._1._2, elem._2)
     }
+  }
+
+  def initiateRepartitioning(newPartitioner: Partitioner): Unit = {
+    logDebug(s"Initiating repartitioning for $taskInfo.", "DRRepartitioning")
+    if (numPartitions > 1) {
+      this.newPartitioner = Some(newPartitioner)
+    }
+  }
+
+  def repartition(): Unit = {
+    if (numPartitions > 1) {
+      initializeRepartitioning()
+      _elementsRead = 0
+      oldSpills.foreach(repartitionSpill)
+      finishRepartitioning()
+    }
+  }
+
+  private def initializeRepartitioning(): Unit = {
+    spillFromMemory()
+    isRepartitioning = true
+    partitioner = newPartitioner
+    oldSpills = spills
+    spills = new ArrayBuffer[SpilledFile]()
+  }
+
+  private def spillFromMemory(): Unit = {
+    if (_elementsRead > 0) {
+      if (aggregator.isDefined) {
+        spill(map)
+        map = new PartitionedAppendOnlyMap[K, C]
+      } else {
+        spill(buffer)
+        buffer = new PartitionedPairBuffer[K, C]
+      }
+    }
+  }
+
+  private def repartitionSpill(spilledFile: SpilledFile): Unit = {
+    val repartitioningBuffer = new RepartitioningBuffer[K, C](partitioner.get)
+    repartitioningBuffer.insertAll(readSpillInMemory(spilledFile))
+    writeSpill(repartitioningBuffer, spilledFile.blockId)
+  }
+
+  private def readSpillInMemory(spilledFile: SpilledFile):
+  Iterator[(Int, Iterator[Product2[K, C]])] = {
+    val reader = new SpillReader(spilledFile)
+    (0 until numPartitions).iterator.map { p =>
+      (p, reader.readNextPartition())
+    }
+  }
+
+  private def writeSpill(outBuffer: WritablePartitionedPairCollection[K, C], blockId: BlockId):
+  Unit = {
+    val repartitionBlockId = blockId
+    val file = diskBlockManager.getFile(repartitionBlockId)
+    try {
+      file.delete()
+    } catch {
+      case ex: Exception => throw new RuntimeException("File cannot be deleted!")
+    }
+    spill(outBuffer, repartitionBlockId, file)
+  }
+
+  private def finishRepartitioning(): Unit = {
+    pushVersion()
+    oldSpills = null
+    isRepartitioning = false
+  }
+
+  private def repartitionInMemory(): Unit = {
+    isRepartitioning = true
+    partitioner = newPartitioner
+    //    emptyTracker()
+
+    var collection = if (aggregator.isDefined) map else buffer
+    val bufferIterator = collection.partitionedDestructiveSortedIterator(None).buffered
+
+    if (bufferIterator.nonEmpty) {
+      val repartitioningBuffer = new RepartitioningBuffer[K, C](partitioner.get)
+      bufferIterator.foreach(x => repartitioningBuffer.insert(x._1._2, x._2, x._1._1))
+
+      if (aggregator.isDefined) {
+        map = new PartitionedAppendOnlyMap[K, C]
+      } else {
+        buffer = new PartitionedPairBuffer[K, C]()
+      }
+      val collection = if (aggregator.isDefined) map else buffer
+
+      repartitioningBuffer.partitionedDestructiveSortedIterator(None).foreach(x => {
+        //        if(!repartitionOnlyOnce) track(x._1._1, x._1._2)
+        collection.insert(x._1._1, x._1._2, x._2)
+        addElementsRead()})
+    }
+    pushVersion()
+
+    isRepartitioning = false
+  }
+
+  private def pushVersion(): Unit = {
+    repartitioningInfo.foreach(
+      _.getHistogramMeta match {
+        case Some(histogramMeta) => histogramMeta.incrementVersion
+        case None =>
+          throw new SparkException("Histogram meta is not available, can not push version!")
+      }
+    )
   }
 }

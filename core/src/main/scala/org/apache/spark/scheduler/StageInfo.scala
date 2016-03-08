@@ -17,6 +17,8 @@
 
 package org.apache.spark.scheduler
 
+import org.apache.spark.Partitioner
+
 import scala.collection.mutable.HashMap
 
 import org.apache.spark.annotation.DeveloperApi
@@ -36,7 +38,8 @@ class StageInfo(
     val rddInfos: Seq[RDDInfo],
     val parentIds: Seq[Int],
     val details: String,
-    private[spark] val taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty) {
+    private[spark] val taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty,
+    val partitioner: Option[Partitioner] = None) extends Serializable {
   /** When this stage was submitted from the DAGScheduler to a TaskScheduler. */
   var submissionTime: Option[Long] = None
   /** Time when all tasks in the stage completed or when the stage was cancelled. */
@@ -64,6 +67,36 @@ class StageInfo(
   }
 }
 
+@DeveloperApi
+class ShuffleStageInfo(
+    stageId: Int,
+    attemptId: Int,
+    name: String,
+    numTasks: Int,
+    shuffleId: Option[Int],
+    rddInfos: Seq[RDDInfo],
+    parentIds: Seq[Int],
+    details: String,
+    taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty,
+    partitioner: Option[Partitioner] = None)
+  extends StageInfo(stageId, attemptId, name, numTasks, shuffleId, rddInfos,
+    parentIds, details, taskLocalityPreferences, partitioner)
+
+@DeveloperApi
+class ResultStageInfo(
+    stageId: Int,
+    attemptId: Int,
+    name: String,
+    numTasks: Int,
+    shuffleId: Option[Int],
+    rddInfos: Seq[RDDInfo],
+    parentIds: Seq[Int],
+    details: String,
+    taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty,
+    partitioner: Option[Partitioner] = None)
+  extends StageInfo(stageId, attemptId, name, numTasks, shuffleId, rddInfos,
+    parentIds, details, taskLocalityPreferences, partitioner)
+
 private[spark] object StageInfo {
   /**
    * Construct a StageInfo from a Stage.
@@ -84,15 +117,31 @@ private[spark] object StageInfo {
       case shuffleMapStage: ShuffleMapStage => Some(shuffleMapStage.shuffleDep.shuffleId)
       case _ => None
     }
-    new StageInfo(
-      stage.id,
-      attemptId,
-      stage.name,
-      numTasks.getOrElse(stage.numTasks),
-      shuffleId,
-      rddInfos,
-      stage.parents.map(_.id),
-      stage.details,
-      taskLocalityPreferences)
+    stage match {
+      case s : ShuffleMapStage =>
+        new ShuffleStageInfo(
+          stage.id,
+          attemptId,
+          stage.name,
+          numTasks.getOrElse(stage.numTasks),
+          shuffleId,
+          rddInfos,
+          stage.parents.map(_.id),
+          stage.details,
+          taskLocalityPreferences,
+          Some(s.shuffleDep.partitioner))
+      case s : ResultStage =>
+        new ResultStageInfo(
+          stage.id,
+          attemptId,
+          stage.name,
+          numTasks.getOrElse(stage.numTasks),
+          shuffleId,
+          rddInfos,
+          stage.parents.map(_.id),
+          stage.details,
+          taskLocalityPreferences,
+          None)
+    }
   }
 }

@@ -17,14 +17,14 @@
 
 package org.apache.spark.shuffle.hash
 
-import java.io.IOException
+import java.io.{BufferedInputStream, FileInputStream, File, IOException}
 
 import org.apache.spark._
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle._
-import org.apache.spark.storage.DiskBlockObjectWriter
+import org.apache.spark.storage.{BlockId, ShuffleBlockId, DiskBlockObjectWriter}
 
 private[spark] class HashShuffleWriter[K, V](
     shuffleBlockResolver: FileShuffleBlockResolver,
@@ -45,9 +45,12 @@ private[spark] class HashShuffleWriter[K, V](
   private val writeMetrics = metrics.registerShuffleWriteMetrics()
 
   private val blockManager = SparkEnv.get.blockManager
-  private val ser = Serializer.getSerializer(dep.serializer.getOrElse(null))
-  private val shuffle = shuffleBlockResolver.forMapTask(dep.shuffleId, mapId, numOutputSplits, ser,
+  private val ser = Serializer.getSerializer(dep.serializer.orNull)
+  private var shuffle = shuffleBlockResolver.forMapTask(dep.shuffleId, mapId, numOutputSplits, ser,
     writeMetrics)
+
+  private var oldShuffle = shuffle
+  private val partitioner = dep.partitioner
 
   /** Write a bunch of records to this task's output */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
@@ -138,6 +141,28 @@ private[spark] class HashShuffleWriter[K, V](
       for (writer <- shuffle.writers) {
         writer.revertPartialWritesAndClose()
       }
+    }
+  }
+
+  def splitFile(inputFile: File, inputBlockId: ShuffleBlockId): Unit = {
+    for (elem <- readFile(inputBlockId, inputFile)) {
+      val newPartitionId = partitioner.getPartition(elem._1)
+      shuffle.writers(inputBlockId.reduceId).write(elem._1, elem._2)
+    }
+  }
+
+  def readFile(blockId: BlockId, file: File): Iterator[(K, V)] = {
+    val serInstance = ser.newInstance()
+
+    if (file != null && blockId != null) {
+      val fileStream = new FileInputStream(file)
+      val bufferedStream = new BufferedInputStream(fileStream)
+      val compressedStream = blockManager.wrapForCompression(blockId, bufferedStream)
+      val deserializationStream = serInstance.deserializeStream(compressedStream)
+      val recordIterator = deserializationStream.asKeyValueIterator.asInstanceOf[Iterator[(K, V)]]
+      recordIterator
+    } else {
+      throw new RuntimeException(s"Cannot read shuffle file $file")
     }
   }
 }

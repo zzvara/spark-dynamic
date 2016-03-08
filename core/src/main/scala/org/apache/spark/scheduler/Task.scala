@@ -63,16 +63,10 @@ private[spark] abstract class Task[T](
   final def run(
       taskAttemptId: Long,
       attemptNumber: Int,
-      metricsSystem: MetricsSystem): T = {
+      metricsSystem: MetricsSystem,
+      taskContext: TaskContextImpl): T = {
     SparkEnv.get.blockManager.registerTask(taskAttemptId)
-    context = new TaskContextImpl(
-      stageId,
-      partitionId,
-      taskAttemptId,
-      attemptNumber,
-      taskMemoryManager,
-      metricsSystem,
-      initialAccumulators)
+    context = taskContext
     TaskContext.setTaskContext(context)
     taskThread = Thread.currentThread()
     if (_killed) {

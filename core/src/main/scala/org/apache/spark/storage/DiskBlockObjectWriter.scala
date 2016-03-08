@@ -20,7 +20,7 @@ package org.apache.spark.storage
 import java.io.{BufferedOutputStream, File, FileOutputStream, OutputStream}
 import java.nio.channels.FileChannel
 
-import org.apache.spark.{SparkEnv, Logging}
+import org.apache.spark.{ColorfulLogging, SparkEnv, Logging}
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.serializer.{SerializationStream, SerializerInstance}
 import org.apache.spark.util.Utils
@@ -44,7 +44,7 @@ private[spark] class DiskBlockObjectWriter(
     writeMetrics: ShuffleWriteMetrics,
     val blockId: BlockId = null)
   extends OutputStream
-  with Logging {
+  with ColorfulLogging {
 
   /** The file channel, used for repositioning / truncating the file. */
   private var channel: FileChannel = null
@@ -82,7 +82,7 @@ private[spark] class DiskBlockObjectWriter(
   private var numRecordsWritten = 0
 
   private val recordCharacteristics: Boolean =
-    SparkEnv.get.conf.getBoolean("spark.metrics.shuffleWrite.dataCharacteristics", false)
+    SparkEnv.get.conf.getBoolean("spark.metrics.shuffleWrite.dataCharacteristics", true)
 
   def open(): DiskBlockObjectWriter = {
     if (hasBeenClosed) {
