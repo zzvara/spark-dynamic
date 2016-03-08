@@ -30,7 +30,7 @@ private[spark] class SortShuffleWriter[K, V, C](
     handle: BaseShuffleHandle[K, V, C],
     mapId: Int,
     context: TaskContext)
-  extends ShuffleWriter[K, V] with Logging {
+  extends ShuffleWriter[K, V] with ColorfulLogging {
 
   private val dep = handle.dependency
 
@@ -47,18 +47,30 @@ private[spark] class SortShuffleWriter[K, V, C](
 
   private val writeMetrics = context.taskMetrics().shuffleWriteMetrics
 
+  private val keyOrdering = Some(new Ordering[Character] {
+    override def compare(a: Character, b: Character): Int = {
+      val h1 = if (a == null) 0 else a.toInt
+      val h2 = if (b == null) 0 else b.toInt
+      if (h1 < h2) -1 else if (h1 == h2) 0 else 1
+    }
+  }.asInstanceOf[Ordering[K]])
+
+  private val repartitioningTracker = SparkEnv.get.repartitioningWorker()
+
+  val repartitioningInfo = context.taskMetrics().repartitioningInfo
+
   /** Write a bunch of records to this task's output */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
-      new ExternalSorter[K, V, C](
-        context, dep.aggregator, Some(dep.partitioner), dep.keyOrdering, dep.serializer)
+      new ExternalSorter[K, V, C](context, dep.aggregator, Some(dep.partitioner),
+        dep.keyOrdering, dep.serializer, repartitioningInfo)
     } else {
       // In this case we pass neither an aggregator nor an ordering to the sorter, because we don't
       // care whether the keys get sorted in each partition; that will be done on the reduce side
       // if the operation being run is sortByKey.
-      new ExternalSorter[K, V, V](
-        context, aggregator = None, Some(dep.partitioner), ordering = None, dep.serializer)
+      new ExternalSorter[K, V, V](context, aggregator = None, Some(dep.partitioner),
+        ordering = None, dep.serializer, repartitioningInfo)
     }
     sorter.insertAll(records)
 

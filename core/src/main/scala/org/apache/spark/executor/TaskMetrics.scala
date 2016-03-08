@@ -59,6 +59,8 @@ class TaskMetrics private[spark] () extends Serializable {
   private val _updatedBlockStatuses = new BlockStatusesAccumulator
   private val _blockFetches = new Accumulator[Seq[BlockFetchnInfos]]
 
+  var repartitioningInfo: Option[RepartitioningInfo] = None
+
   private[spark] def addBlockFetch(blockResult: BlockResult) : Unit = {
     if (!blockResult.blockId.isShuffle) {
       logInfo(s"Recording block result ${blockResult.blockId}.")

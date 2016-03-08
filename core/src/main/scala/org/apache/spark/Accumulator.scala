@@ -160,7 +160,12 @@ object AccumulatorParam {
     /**
       * Size or width of the histogram, that is equal to the size of the map.
       */
-    private var histogramSize: Int = 0
+    private var _width: Int = 0
+    def width: Int = _width
+
+    private var _version: Int = 0
+    def version: Int = _version
+    def incrementVersion: Unit = { _version += 1 }
 
     override def addAccumulator(r: Map[Any, Double], t: Map[Any, Double]): Map[Any, Double] = {
       val key = t.toList.head._1
@@ -169,20 +174,20 @@ object AccumulatorParam {
           r.get(key) match {
             case Some(value) => value + 1.0
             case None =>
-              histogramSize = histogramSize + 1
+              _width = _width + 1
               sampleRate
           }
         ))
         // Decide if scaling is needed.
-        if (histogramSize * sampleRate >= HISTOGRAM_SCALE_BOUNDARY) {
+        if (_width * sampleRate >= HISTOGRAM_SCALE_BOUNDARY) {
           sampleRate = sampleRate / BACKOFF_FACTOR
           val scaledHistogram =
             updatedHistogram
               .mapValues(x => x / BACKOFF_FACTOR)
               .filter(pair => pair._2 > DROP_BOUNDARY)
           // Decide if additional cut is needed.y
-          if (histogramSize > HISTOGRAM_SIZE_BOUNDARY) {
-            histogramSize = HISTOGRAM_COMPACTION
+          if (_width > HISTOGRAM_SIZE_BOUNDARY) {
+            _width = HISTOGRAM_COMPACTION
             scaledHistogram.toSeq.sortBy(-_._2).take(HISTOGRAM_COMPACTION).toMap
           } else {
             scaledHistogram
@@ -200,11 +205,21 @@ object AccumulatorParam {
     }
 
     private def merge[A, B](s1: Map[A, B], s2: Map[A, B])(f: (B, B) => B)(zero: B): Map[A, B] = {
-      s1 ++ s2.map{ case (k, v) => k -> f(v, s1.getOrElse(k, zero)) }
+      DataCharacteristicsAccumulatorParam.merge(zero)(f)(s1, s2)
     }
 
     override def compact(t: Map[Any, Double]): Map[Any, Double] = {
-      t.toSeq.sortBy(-_._2).take(TAKE).toMap
+      compact(t, TAKE)
+    }
+
+    def compact(t: Map[Any, Double], take: Int): Map[Any, Double] = {
+      t.toSeq.sortBy(-_._2).take(take).toMap
+    }
+  }
+
+  private[spark] object DataCharacteristicsAccumulatorParam {
+    def merge[A, B](zero: B)(f: (B, B) => B)(s1: Map[A, B], s2: Map[A, B]): Map[A, B] = {
+      s1 ++ s2.map{ case (k, v) => k -> f(v, s1.getOrElse(k, zero)) }
     }
   }
 }

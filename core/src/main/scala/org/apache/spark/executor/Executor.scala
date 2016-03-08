@@ -271,10 +271,25 @@ private[spark] class Executor(
         taskStart = System.currentTimeMillis()
         var threwException = true
         val value = try {
+          val context = new TaskContextImpl(
+            task.stageId,
+            task.partitionId,
+            taskId,
+            attemptNumber,
+            taskMemoryManager,
+            env.metricsSystem,
+            task.initialAccumulators)
+          SparkEnv.get.repartitioningWorker()
+            .asInstanceOf[RepartitioningTrackerWorker].taskArrival(
+            taskId,
+            task.stageId,
+            context
+          )
           val res = task.run(
             taskAttemptId = taskId,
             attemptNumber = attemptNumber,
-            metricsSystem = env.metricsSystem)
+            metricsSystem = env.metricsSystem,
+            taskContext = context)
           threwException = false
           res
         } finally {
