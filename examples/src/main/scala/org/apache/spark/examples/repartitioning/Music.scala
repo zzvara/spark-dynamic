@@ -81,19 +81,20 @@ object Music {
             }
           }
         }
-/*
     tagsWithTracks
       .groupByKey()
       .map(x => x)
       .count()
-    .mapPartitionsWithIndex((x,y) => y.map(z => (z._1, x)))
-    .distinct()
-    .groupByKey()
-    .map(x => (x._1, x._2.size, x._2))
-    .filter(x => x._2 != 1)
-    .collect().take(10).foreach(println)
-    */
+    /*
+        .mapPartitionsWithIndex((x,y) => y.map(z => (z._1, x)))
+        .distinct()
+        .groupByKey()
+        .map(x => (x._1, x._2.size, x._2))
+        .filter(x => x._2 != 1)
+        .collect().take(10).foreach(println)
+        */
 
+    /*
     val tagFrequencies = tagsWithTracks
       .map(pair => (pair._1, 1))
       .reduceByKey(_ + _)
@@ -103,7 +104,6 @@ object Music {
     println(tagFrequencies.count())
     tagFrequencies.take(50) foreach println
 
-    /*
     tagsWithTracks.join {
       tags.map(tag => (tag.ID, tag.value))
     }
@@ -140,7 +140,34 @@ object Music {
     .count()
     */
 
-    /** file: tracks.idomaar
+
+
+    /** file: tracks.small.idomaar
+      * (205245,10214)
+(70618,5366)
+(189631,4774)
+(115355,4321)
+(11056,3916)
+(154891,3523)
+(81223,3452)
+(122769,3253)
+(117167,2936)
+(11957,2367)
+(84597,2251)
+(107401,2097)
+(46208,2054)
+(227682,2042)
+(11242,2042)
+(195173,1962)
+(54087,1811)
+(76913,1744)
+(3982,1696)
+(218701,1684)
+(103394,1684)
+(43212,1675)
+      *
+      *
+      * file: tracks.idomaar
     (205245,201299)
     (70618,107996)
     (189631,97575)
