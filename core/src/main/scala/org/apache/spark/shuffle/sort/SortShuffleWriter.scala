@@ -55,8 +55,6 @@ private[spark] class SortShuffleWriter[K, V, C](
     }
   }.asInstanceOf[Ordering[K]])
 
-  private val repartitioningTracker = SparkEnv.get.repartitioningWorker()
-
   val repartitioningInfo = context.taskMetrics().repartitioningInfo
 
   /** Write a bunch of records to this task's output */
@@ -64,13 +62,13 @@ private[spark] class SortShuffleWriter[K, V, C](
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
       new ExternalSorter[K, V, C](context, dep.aggregator, Some(dep.partitioner),
-        dep.keyOrdering, dep.serializer, repartitioningInfo)
+        dep.keyOrdering, dep.serializer)
     } else {
       // In this case we pass neither an aggregator nor an ordering to the sorter, because we don't
       // care whether the keys get sorted in each partition; that will be done on the reduce side
       // if the operation being run is sortByKey.
       new ExternalSorter[K, V, V](context, aggregator = None, Some(dep.partitioner),
-        ordering = None, dep.serializer, repartitioningInfo)
+        ordering = None, dep.serializer)
     }
     sorter.insertAll(records)
 

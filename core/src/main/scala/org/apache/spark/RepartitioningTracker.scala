@@ -544,13 +544,13 @@ class Throughput() extends Scanner {
 
   override def run(): Unit = {
     logInfo(s"Running scanner for stage ${taskContext.stageId()} task" +
-      s" ${taskContext.taskAttemptId()}.", "default", "strongBlue")
+            s" ${taskContext.taskAttemptId()}.", "default", "strongBlue")
     require(taskContext != null, "Scanner needs to have a valid task context!")
     isRunning = true
     taskContext.addTaskCompletionListener(new TaskCompletionListener {
       override def onTaskCompletion(context: TaskContext): Unit = {
         logInfo(s"Detected completion for stage ${taskContext.stageId()} task" +
-          s" ${taskContext.taskAttemptId()}.", "DRCommunication")
+                s" ${taskContext.taskAttemptId()}.", "DRCommunication")
         isRunning = false
       }
     })
@@ -563,15 +563,15 @@ class Throughput() extends Scanner {
             .asInstanceOf[DataCharacteristicsAccumulatorParam]
           val recordBound =
             SparkEnv.get.conf.getInt("spark.repartitioning.throughput.record-bound", 100)
-          val histogramHeightDelta = shuffleWriteMetrics.recordsWritten - lastHistogramHeight
+          val histogramHeightDelta = histogramMeta.recordsPassed - lastHistogramHeight
           if (histogramMeta.width == 0) {
-            logInfo(s"Histogram is empty for task ${taskContext.taskAttemptId()}." +
+            logInfo(s"Histogram is empty for task ${taskContext.taskAttemptId()}. " +
                     s"Doing Nothing.", "DRHistogram")
           } else if (recordBound > histogramHeightDelta) {
             logInfo(s"Not enough records ($histogramHeightDelta) " +
-              s"processed to send the histogram to the driver.", "DRHistogram")
+                    s"processed to send the histogram to the driver.", "DRHistogram")
           } else {
-            lastHistogramHeight = shuffleWriteMetrics.recordsWritten
+            lastHistogramHeight = histogramMeta.recordsPassed
             SparkEnv.get.repartitioningWorker()
               .sendHistogram(
                 taskContext.stageId(),
@@ -586,7 +586,7 @@ class Throughput() extends Scanner {
       Thread.sleep(SparkEnv.get.conf.getInt("spark.repartitioning.throughput.interval", 1000))
     }
     logInfo(s"Scanner is finishing for stage ${taskContext.stageId()} task" +
-      s" ${taskContext.taskAttemptId()}.", "default", "strongBlue")
+            s" ${taskContext.taskAttemptId()}.", "default", "strongBlue")
   }
 }
 
@@ -685,7 +685,7 @@ class Strategy(stageID: Int,
       (r._1, r._2, r._2.toDouble / globalHistogram.map(_._2).sum))
     logInfo(
       sortedNormedHistogram.foldLeft(
-        s"Global histogram for repartitioning" +
+        s"Global histogram for repartitioning " +
           s"step $repartitionCount:\n")((x, y) =>
         x + s"\t${y._1}\t->\t${y._2}\t${y._3}\n"), "DRRepartitioner")
 
@@ -699,7 +699,9 @@ class Strategy(stageID: Int,
     assert(sCut <= cut)
     assert(sCut <= numPartitions - 1)
 
-    val heaviest = globalHistogram.take(cut)
+    val heaviest = sortedNormedHistogram.map{
+      triple => (triple._1, triple._3)
+    }.take(cut)
     val highestValues = heaviest.map(_._2).toArray
     val heaviestKeys = heaviest.map(_._1).toArray
     cut = Math.min(cut, highestValues.length)

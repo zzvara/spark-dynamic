@@ -85,6 +85,9 @@ private[spark] trait Spillable[C] extends Logging {
       // or we already had more memory than myMemoryThreshold), spill the current collection
       shouldSpill = currentMemory >= myMemoryThreshold
     }
+    if (elementsRead % 2048 == 0 && collection.isInstanceOf[PartitionedPairBuffer[_, _]]) {
+      shouldSpill = true
+    }
     shouldSpill = shouldSpill || _elementsRead > numElementsForceSpillThreshold
     // Actually spill
     if (shouldSpill) {
