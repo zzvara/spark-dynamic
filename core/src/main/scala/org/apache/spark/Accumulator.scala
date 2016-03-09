@@ -144,6 +144,14 @@ object AccumulatorParam {
   private[spark] object ShuffleReadDataCharacteristicsAccumulatorParam
     extends DataCharacteristicsAccumulatorParam
 
+  /**
+    * Accumulator parameter to record data characteristics in form of key-histograms.
+    *
+    * The implementation allows to set a cap for the histogram. Also, it samples
+    * well for any data size, due to its back-off sampling nature. It is not sensitive
+    * to early or late heavy items. It performs with a higher error rate when the
+    * distribution is close to uniform.
+    */
   private[spark] class DataCharacteristicsAccumulatorParam
     extends MapAccumulatorParam[Any, Double] {
     @transient private val TAKE: Int = 4
@@ -163,12 +171,17 @@ object AccumulatorParam {
     private var _width: Int = 0
     def width: Int = _width
 
+    private var _recordsPassed: Long = 0
+    def recordsPassed: Long = _recordsPassed
+
+
     private var _version: Int = 0
     def version: Int = _version
     def incrementVersion: Unit = { _version += 1 }
 
     override def addAccumulator(r: Map[Any, Double], t: Map[Any, Double]): Map[Any, Double] = {
       val key = t.toList.head._1
+      _recordsPassed += 1
       if (Math.random() <= sampleRate) { // Decided to record the key.
         val updatedHistogram = r + ((key,
           r.get(key) match {
@@ -185,7 +198,7 @@ object AccumulatorParam {
             updatedHistogram
               .mapValues(x => x / BACKOFF_FACTOR)
               .filter(pair => pair._2 > DROP_BOUNDARY)
-          // Decide if additional cut is needed.y
+          // Decide if additional cut is needed.
           if (_width > HISTOGRAM_SIZE_BOUNDARY) {
             _width = HISTOGRAM_COMPACTION
             scaledHistogram.toSeq.sortBy(-_._2).take(HISTOGRAM_COMPACTION).toMap

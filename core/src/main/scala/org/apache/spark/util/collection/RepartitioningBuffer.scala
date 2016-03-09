@@ -29,8 +29,7 @@ class RepartitioningBuffer[K, V](val newPartitioner: Partitioner)
 
   val numPartitions = newPartitioner.numPartitions
   val buffers =
-    Array.fill[mutable.Map[Int, ArrayBuffer[(K, V)]]](numPartitions)(
-      mutable.Map[Int, ArrayBuffer[(K, V)]]())
+    Array.fill[mutable.Map[Int, ArrayBuffer[(K, V)]]](numPartitions)(mutable.Map[Int, ArrayBuffer[(K, V)]]())
 
   def insertAll(iterators: Iterator[(Int, Iterator[Product2[K, V]])]): Unit = {
     iterators.foreach(iter => iter._2.foreach(x => insert(x._1, x._2, iter._1)))
@@ -42,12 +41,6 @@ class RepartitioningBuffer[K, V](val newPartitioner: Partitioner)
   override def insert(newPartition: Int, key: K, value: V): Unit = {
     throw new RuntimeException("This kind of insertion is not supported by RepartitioningBuffer. " +
       "Use method RepartitioningBuffer.insert(key: K, value: V, oldPartition: Int) instead.")
-    //    val oldPartition = oldPartitioner.getPartition(key)
-    //    val map = buffers(newPartition)
-    //    map.get(oldPartition) match {
-    //      case None => map.update(oldPartition, ArrayBuffer[(K, V)]((key, value)))
-    //      case Some(buff) => buff.append((key, value))
-    //    }
   }
 
   /**
