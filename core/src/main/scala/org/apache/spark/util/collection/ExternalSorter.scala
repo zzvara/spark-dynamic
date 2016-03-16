@@ -282,7 +282,7 @@ private[spark] class ExternalSorter[K, V, C](
       val before = _elementsRead
       logInfo(s"Number of seen records since last spill and " +
               s"before repartitioning $taskInfo: $before", "DRDebug")
-      initiateRepartitioning(
+      setRepartitioner(
         getRepartitioner.getOrElse(throw new RuntimeException("Repartitioner not found!")))
       repartition()
       logDebug(s"Finished repartitioning for $taskInfo.", "DRRepartitioning")
@@ -931,6 +931,13 @@ private[spark] class ExternalSorter[K, V, C](
     }
   }
 
+  def setRepartitioner(newPartitioner: Partitioner): Unit = {
+    logDebug(s"Setting repartitioner for $taskInfo.", "DRRepartitioning")
+    if (numPartitions > 1) {
+      this.newPartitioner = Some(newPartitioner)
+    }
+  }
+
   def initiateRepartitioning(newPartitioner: Partitioner): Unit = {
     logDebug(s"Initiating repartitioning for $taskInfo.", "DRRepartitioning")
     if (numPartitions > 1) {
@@ -957,6 +964,8 @@ private[spark] class ExternalSorter[K, V, C](
 
   private def spillFromMemory(): Unit = {
     if (_elementsRead > 0) {
+      logDebug(s"Spilling from memory before repartitioning ${_elementsRead} records.",
+                "DRRepartitioning")
       if (aggregator.isDefined) {
         spill(map)
         map = new PartitionedAppendOnlyMap[K, C]
@@ -968,6 +977,7 @@ private[spark] class ExternalSorter[K, V, C](
   }
 
   private def repartitionSpill(spilledFile: SpilledFile): Unit = {
+    logDebug(s"Repartitioning spill ${spilledFile.blockId}.", "DRRepartitioning")
     val repartitioningBuffer = new RepartitioningBuffer[K, C](partitioner.get)
     repartitioningBuffer.insertAll(readSpillInMemory(spilledFile))
     writeSpill(repartitioningBuffer, spilledFile.blockId)

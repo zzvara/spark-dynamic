@@ -215,7 +215,7 @@ Spark.Visualizer.Execution.Reader = function(eventHandler) {
                 console.info("Detected driver host name is: " + driverHostName + ".");
             }
 
-            var url = driverHostName + "/api/v1/applications"
+            var url = driverHostName + "/api/v1/applications";
 
             $.ajax({
                 dataType: "json",
