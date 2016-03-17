@@ -622,6 +622,17 @@ class Strategy(stageID: Int,
   private val desiredNumberOfHistograms = numberOfTasks
 
   /**
+    * @todo Remove these assertions in the future.
+    */
+  assert(numPartitions > 0)
+  assert(cut >= -1)
+  assert(cut <= numPartitions)
+  assert(sCut >= 0)
+  println("scut: " + sCut + ", cut: " + cut)
+  assert(sCut <= cut)
+  assert(sCut <= numPartitions - 1)
+
+  /**
     * Called by the RepartitioningTrackerMaster if new histogram arrives
     * for this particular job's strategy.
     */
@@ -689,22 +700,12 @@ class Strategy(stageID: Int,
           s"step $repartitionCount:\n")((x, y) =>
         x + s"\t${y._1}\t->\t${y._2}\t${y._3}\n"), "DRRepartitioner")
 
-    /**
-      * @todo Remove these assertions in the future.
-      */
-    assert(numPartitions > 0)
-    assert(cut >= -1)
-    assert(cut <= numPartitions)
-    assert(sCut >= 0)
-    assert(sCut <= cut)
-    assert(sCut <= numPartitions - 1)
-
     val heaviest = sortedNormedHistogram.map{
       triple => (triple._1, triple._3)
     }.take(cut)
     val highestValues = heaviest.map(_._2).toArray
     val heaviestKeys = heaviest.map(_._1).toArray
-    cut = Math.min(cut, highestValues.length)
+//    cut = Math.min(cut, highestValues.length)
     val partitioningInfo = getPartitioningInfo(highestValues)
 
     val repartitioner = new KeyIsolationPartitioner(
@@ -739,8 +740,10 @@ class Strategy(stageID: Int,
     var level = 1.0d / numPartitions
     var singleKeysCut = 0
 
+    val currentCut = Math.min(cut, highestValues.length)
+
     def countLevel(i: Int): Unit = {
-      if (i < cut && level <= highestValues(i)) {
+      if (i < currentCut && level <= highestValues(i)) {
         remainder -= highestValues(i)
         if (i < numPartitions - 1) level = remainder / (numPartitions - 1 - i) else level = 0.0d
         singleKeysCut += 1
@@ -755,12 +758,12 @@ class Strategy(stageID: Int,
       level = remainder / (numPartitions - singleKeysCut)
     }
 
-    logInfo(s"Repartitioning parameters: numPartitions=$numPartitions, cut=$cut," +
+    logInfo(s"Repartitioning parameters: numPartitions=$numPartitions, cut=$currentCut," +
               s"sCut=$singleKeysCut, level=$level, remainder=$remainder," +
-              s"block=${(numPartitions - cut) * level}, maxKey=${highestValues.head}",
+              s"block=${(numPartitions - currentCut) * level}, maxKey=${highestValues.head}",
             "DRRepartitioner")
 
-    new PartitioningInfo(numPartitions, cut, singleKeysCut, level)
+    new PartitioningInfo(numPartitions, currentCut, singleKeysCut, level)
   }
 
   def getWeightedHashPartitioner(highestValues: Array[Double],

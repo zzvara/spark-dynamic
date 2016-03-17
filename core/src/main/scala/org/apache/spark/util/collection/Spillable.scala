@@ -80,7 +80,7 @@ private[spark] abstract class Spillable[C](taskMemoryManager: TaskMemoryManager)
    */
   protected def maybeSpill(collection: C, currentMemory: Long): Boolean = {
     var shouldSpill = false
-    if (elementsRead % 32 == 0 && currentMemory >= myMemoryThreshold) {
+    if (elementsRead % 2048 == 0 && currentMemory >= myMemoryThreshold) {
       // Claim up to double our current memory from the shuffle memory pool
       val amountToRequest = 2 * currentMemory - myMemoryThreshold
       val granted = acquireMemory(amountToRequest)
@@ -89,14 +89,14 @@ private[spark] abstract class Spillable[C](taskMemoryManager: TaskMemoryManager)
       // or we already had more memory than myMemoryThreshold), spill the current collection
       shouldSpill = currentMemory >= myMemoryThreshold
     }
-    if (elementsRead % 2048 == 0 && collection.isInstanceOf[PartitionedPairBuffer[_, _]]) {
+    if (elementsRead % 32 == 0 && collection.isInstanceOf[PartitionedPairBuffer[_, _]]) {
       shouldSpill = true
     }
     shouldSpill = shouldSpill || _elementsRead > numElementsForceSpillThreshold
     // Actually spill
     if (shouldSpill) {
       _spillCount += 1
-      logSpillage(currentMemory)
+//      logSpillage(currentMemory)
       spill(collection)
       _elementsRead = 0
       _memoryBytesSpilled += currentMemory

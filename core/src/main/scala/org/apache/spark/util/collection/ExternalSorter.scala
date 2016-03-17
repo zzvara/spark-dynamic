@@ -239,7 +239,11 @@ private[spark] class ExternalSorter[K, V, C](
       while (records.hasNext && checkAndDoRepartitioning()) {
         addElementsRead()
         kv = records.next()
-        map.changeValue((getPartition(kv._1), kv._1), update)
+        val partitionId = getPartition(kv._1)
+        if (map((partitionId, kv._1)) == null) {
+          shuffleWriteMetrics.foreach(_.addKeyWritten(kv._1))
+        }
+        map.changeValue((partitionId, kv._1), update)
         maybeSpillCollection(usingMap = true)
       }
       if(records.hasNext) {
@@ -261,11 +265,14 @@ private[spark] class ExternalSorter[K, V, C](
         buffer.insert(partitionId, kv._1, kv._2.asInstanceOf[C])
         maybeSpillCollection(usingMap = false)
       }
+      if(records.hasNext) {
+        logInfo(s"Stopped building histogram for $taskInfo.", "DRHistogram", "DRDebug")
+      }
       while(records.hasNext) {
         addElementsRead()
         val kv = records.next()
         val partitionId = getPartition(kv._1)
-        shuffleWriteMetrics.foreach(_.addKeyWritten(kv._1))
+//        shuffleWriteMetrics.foreach(_.addKeyWritten(kv._1))
         buffer.insert(partitionId, kv._1, kv._2.asInstanceOf[C])
         maybeSpillCollection(usingMap = false)
       }
@@ -279,24 +286,21 @@ private[spark] class ExternalSorter[K, V, C](
       // TODO repartitioning more times when version jumps up more than one
       updateCurrentVersion()
       logDebug(s"Started repartitioning for $taskInfo.", "DRRepartitioning", "DRDebug")
-      val before = _elementsRead
-      logInfo(s"Number of seen records since last spill and " +
-              s"before repartitioning $taskInfo: $before", "DRDebug")
+//      val before = _elementsRead
+//      logInfo(s"Number of seen records since last spill and " +
+//              s"before repartitioning $taskInfo: $before", "DRDebug")
       setRepartitioner(
         getRepartitioner.getOrElse(throw new RuntimeException("Repartitioner not found!")))
       repartition()
       logDebug(s"Finished repartitioning for $taskInfo.", "DRRepartitioning")
-      val after = _elementsRead
-      logInfo(s"Number of seen records after repartitioning $taskInfo: $after", "DRDebug")
-      /*
-      if (before != after) {
-        throw new RuntimeException(s"Repartitioning failed for $taskInfo.")
-      }
-      */
-      false
-    } else {
-      true
+//      val after = _elementsRead
+//      logInfo(s"Number of seen records after repartitioning $taskInfo: $after", "DRDebug")
+//      if (before != after) {
+//        throw new RuntimeException(s"Repartitioning failed for $taskInfo.")
+//      }
     }
+    // TODO may be wrong!
+    currentRepartitioningVersion.isDefined
   }
 
   /**
