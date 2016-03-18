@@ -278,10 +278,6 @@ Spark.Visualizer.Execution.Control.Handlers = function() {
             return false;
         }
 
-        histogramData.sort(function(a, b) {
-            return a[1] - b[1];
-        });
-
         max = histogramData[histogramData.length - 1][1];
 
         $.each(histogramData, function(i, e) {

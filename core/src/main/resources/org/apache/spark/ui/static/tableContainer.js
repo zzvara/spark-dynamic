@@ -80,12 +80,19 @@ Spark.Visualizer.Model.Table = (function () {
                 if (tasks[i].ID == taskFinishedEvent.taskId) {
                     tasks[i].finished = true;
                     tasks[i].finishTime = taskFinishedEvent.finishTime;
-                    tasks[i].histogram =
+                    var histogram =
                         (typeof taskFinishedEvent.metrics != "undefined" &&
                         typeof taskFinishedEvent.metrics.shuffleReadMetrics != "undefined")
                             ? taskFinishedEvent.metrics.shuffleReadMetrics.dataCharacteristics
                             : [];
-
+                    // Sort histogram and convert to array.
+                    var sortable = [];
+                    for (var key in histogram)
+                        sortable.push([key, histogram[key]])
+                    sortable.sort(function(a, b) {
+                        return a[1] - b[1];
+                    });
+                    tasks[i].histogram = sortable;
                     break;
                 }
             }
