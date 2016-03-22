@@ -23,7 +23,7 @@ object Music {
       constructor: (Int, Int, Map[String, Any], Option[Map[String, Any]]) => T,
       dropProbability: Double = 0.0)(implicit context: SparkContext): RDD[T] = {
     context
-      .textFile(fileName, 38)
+      .textFile(fileName, 10)
       // .filter(x => drop(probability = dropProbability))
       .map(_.split("\t").drop(1))
       .flatMap(a => {
@@ -82,7 +82,7 @@ object Music {
           }
         }
     tagsWithTracks
-      .groupByKey()
+      .groupByKey(10)
       .map(x => x)
       .count()
     /*

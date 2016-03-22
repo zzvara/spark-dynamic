@@ -199,7 +199,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
         */
       case ShuffleWriteStatus(stageID, taskID, partitionID,
                               keyHistogram: DataCharacteristics[Any]) =>
-        logInfo(s"Received ShuffleWriteStatus message for" +
+        logInfo(s"Received ShuffleWriteStatus message for " +
           s"stage $stageID and task $taskID", "DRCommunication")
         _stageData.get(stageID) match {
           case Some(stageData) =>
@@ -270,7 +270,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
                               new Strategy(stageID, stageInfo.numTasks, partitioner.get),
                               repartitioningMode))
         val scanStrategy = new ScanStrategy(stageID, new ThroughputPrototype())
-        logInfo(s"Sending repartitioning scan-strategy to each worker for" +
+        logInfo(s"Sending repartitioning scan-strategy to each worker for " +
                 s"job $stageID", "DRCommunication")
         workers.values.foreach(_.reference.send(scanStrategy))
       }
@@ -660,7 +660,7 @@ class Strategy(stageID: Int,
         logInfo(s"Recording outdated histogram arrival for partition $partitionID." +
                 s"Doing nothing.", "DRCommunication", "DRHistogram")
       } else {
-        logInfo(s"Recording histogram arrival from a future step for" +
+        logInfo(s"Recording histogram arrival from a future step for " +
                 s"partition $partitionID. Doing nothing.", "DRCommunication", "DRHistogram")
       }
     }
@@ -680,7 +680,7 @@ class Strategy(stageID: Int,
         .reduce(DataCharacteristicsAccumulatorParam.merge[Any, Double](0.0)(
           (a: Double, b: Double) => a + b)
         )
-        .toSeq.sortBy(-_._2).take(numPartitions)
+        .toSeq.sortBy(-_._2)
 
     if (histograms.size >=
       SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) {
@@ -692,8 +692,9 @@ class Strategy(stageID: Int,
   }
 
   override protected def repartition(globalHistogram: Seq[(Any, Double)]): Unit = {
-    val sortedNormedHistogram = globalHistogram.map(r =>
-      (r._1, r._2, r._2.toDouble / globalHistogram.map(_._2).sum))
+    val height = globalHistogram.map(_._2).sum
+    val sortedNormedHistogram = globalHistogram.take(numPartitions).map(r =>
+      (r._1, r._2, r._2.toDouble / height))
     logInfo(
       sortedNormedHistogram.foldLeft(
         s"Global histogram for repartitioning " +
