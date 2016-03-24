@@ -91,7 +91,7 @@ case class MasterStageData(info: StageInfo, strategy: Strategy, mode: Repartitio
 
 case class RepartitioningStageData(
   var scannerPrototype: ScannerPrototype,
-  scannedTasks: mutable.HashMap[Long, WorkerTaskData] = mutable.HashMap[Long, WorkerTaskData](),
+  var scannedTasks: Option[Map[Long, WorkerTaskData]] = Some(Map[Long, WorkerTaskData]()),
   var partitioner: Option[Partitioner] = None,
   var version: Option[Int] = Some(0)){
 
@@ -101,6 +101,8 @@ case class RepartitioningStageData(
 
   def finishRepartitioning(): Unit = {
     _repartitioningFinished = true
+    scannedTasks = None
+    version = None
   }
 }
 case class WorkerTaskData(info: RepartitioningInfo, scanner: Scanner)
@@ -206,8 +208,8 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
             logInfo(s"Received key histogram for stage $stageID" +
               s" task $taskID (with size ${keyHistogram.localValue.size}).",
               "DRCommunication", "DRHistogram")
-            logInfo(s"Histogram content is:")
-            logInfo(keyHistogram.localValue.map(_.toString).mkString("\n"))
+            logInfo(s"Histogram content is:", "DRHistogram")
+            logInfo(keyHistogram.localValue.map(_.toString).mkString("\n"), "DRHistogram")
             stageData.strategy.onHistogramArrival(partitionID, keyHistogram)
             context.reply(true)
           case None =>
@@ -381,8 +383,7 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
             val thread = new Thread(scanner)
             thread.start()
             logInfo(s"Scanner started for task $taskID.")
-
-            sd.scannedTasks.update(taskID, new WorkerTaskData(repartitioningInfo, scanner))
+            sd.scannedTasks = Some(sd.scannedTasks.get + (taskID -> new WorkerTaskData(repartitioningInfo, scanner)))
           }
 
           logInfo(s"Added TaskContext $taskContext for stage $stageID task $taskID to" +
@@ -439,44 +440,55 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
       logInfo(s"Received scan strategy for stage $stageID", "DRCommunication")
       stageData.put(stageID, new RepartitioningStageData(scanner))
     case RepartitioningStrategy(stageID, repartitioner, version) =>
-      logInfo(s"Received repartitioning strategy for stage $stageID.",
-              "DRCommunication", "DRRepartitioner")
+      logInfo(s"Received repartitioning strategy for stage $stageID with repartitioner $repartitioner.",
+        "DRCommunication", "DRRepartitioner", "cyan")
       stageData.get(stageID) match {
         case Some(sd) =>
+          val scannedTasks = sd.scannedTasks.get
           sd.partitioner = Some(repartitioner)
           sd.version = Some(version)
           logInfo(s"Scanned tasks before repartitioning on worker $executorId, ${sd.scannedTasks}",
-                  "DRRepartitioner")
+            "DRRepartitioner")
           logInfo(s"Scanned partitions are" +
-                  s" ${sd.scannedTasks.values.map(_.scanner.taskContext.partitionId())}",
-                  "DRRepartitioner")
-          sd.scannedTasks.values.foreach(wtd => {
+            s" ${scannedTasks.values.map(_.scanner.taskContext.partitionId())}",
+            "DRRepartitioner")
+          scannedTasks.values.foreach(wtd => {
             wtd.info.updateRepartitioner(repartitioner, version)
             logInfo(s"Repartitioner set for stage $stageID task ${wtd.info.taskID} on" +
-                    s"worker $executorId", "DRRepartitioner")
+              s"worker $executorId", "DRRepartitioner")
           })
         case None =>
           logWarning(s"Repartitioner arrived for non-registered stage of id $stageID." +
-                     s"Doing nothing.", "DRRepartitioner")
+            s"Doing nothing.", "DRRepartitioner")
       }
+      logInfo(s"Finished processing repartitioning strategy for stage $stageID.",
+        "cyan")
     case ShutDownScanners(stageID) =>
-      logInfo(s"Stopping scanners for stage $stageID on executor $executorId.", "DRCommunication")
+      logInfo(s"Stopping scanners for stage $stageID on executor $executorId.",
+        "DRCommunication", "cyan")
       stopScanners(stageID)
     case ClearStageData(stageID) =>
-      logInfo(s"Clearing stage data for stage $stageID on executor $executorId.", "DRCommunication")
+      logInfo(s"Clearing stage data for stage $stageID on executor $executorId.", "DRCommunication", "cyan")
       clearStageData(stageID)
   }
+
+//  def stoppingRequest(stageID: Int): Unit = {
+//    if(stageData(stageID).repartitioningInProgress) {
+//      repartitioningInProgress).stopScannersFlag = true
+//    } else {
+//      stopScanners(stageID)
+//    }
+//  }
 
   private def stopScanners(stageID: Int): Unit = {
     stageData.get(stageID) match {
       case Some(sd) =>
         val scannedTasks = sd.scannedTasks
-        scannedTasks.keys.foreach(k => scannedTasks.remove(k).foreach({ wtd =>
-          wtd.scanner.stop()
-          wtd.info.finishTracking()
-        }))
+        scannedTasks.get.foreach({ st =>
+          st._2.scanner.stop()
+          st._2.info.finishTracking()
+        })
         sd.finishRepartitioning()
-        sd.version = None
       case None =>
         logWarning(s"Attempt to stop scanners for non-registered stage of id $stageID." +
                    s"Doing nothing.", "DRScanner")
@@ -650,6 +662,7 @@ class Strategy(stageID: Int,
           if (decide()) {
             repartitionCount += 1
             if (SparkEnv.get.conf.getBoolean("spark.repartitioning.only.once", true)) {
+              logInfo("Shutting down scanners because repartitioning mode is set to only-once")
               SparkEnv.get.repartitioningTracker
                 .asInstanceOf[RepartitioningTrackerMaster]
                 .shutDownScanners(stageID)
@@ -699,7 +712,7 @@ class Strategy(stageID: Int,
       sortedNormedHistogram.foldLeft(
         s"Global histogram for repartitioning " +
           s"step $repartitionCount:\n")((x, y) =>
-        x + s"\t${y._1}\t->\t${y._2}\t${y._3}\n"), "DRRepartitioner")
+        x + s"\t${y._1}\t->\t${y._2}\t${y._3}\n"), "DRHistogram", "DRRepartitioner")
 
     val heaviest = sortedNormedHistogram.map{
       triple => (triple._1, triple._3)

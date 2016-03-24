@@ -125,9 +125,12 @@ class RepartitioningInfo(
 
   var trackingFinished = false
 
+  logInfo(s"Created RepartitioningInfo for stage:$stageID-task:$taskID.\n\tRepartitioner: $repartitioner, version: $version.", "yellow")
+
   def updateRepartitioner(repartitioner: Partitioner, version: Int): Unit = {
     this.repartitioner = Some(repartitioner)
     this.version = Some(version)
+    logInfo(s"Updated repartitioner for stage:$stageID-task:$taskID.\n\tNew repartitioner: $repartitioner, new version: $version.", "yellow")
   }
 
   def getHistogramMeta: Option[DataCharacteristicsAccumulatorParam] = {
@@ -138,5 +141,6 @@ class RepartitioningInfo(
 
   def finishTracking(): Unit = {
     trackingFinished = true
+    logInfo(s"Finished tracking of stage:$stageID-task:$taskID.\n\tRepartitioner: $repartitioner, version: $version.", "yellow")
   }
 }

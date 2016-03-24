@@ -82,7 +82,7 @@ object Music {
           }
         }
     tagsWithTracks
-      .groupByKey(10)
+      .groupByKey()
       .map(x => x)
       .count()
     /*

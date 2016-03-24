@@ -76,6 +76,7 @@ private[spark] abstract class Task[T](
       kill(interruptThread = false)
     }
     try {
+      logInfo(s"Running task for partition $partitionId")
       runTask(context)
     } catch {
       case e: Throwable =>

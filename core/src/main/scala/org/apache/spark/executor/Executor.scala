@@ -285,6 +285,7 @@ private[spark] class Executor(
             task.stageId,
             context
           )
+          logInfo(s"Actually running task $taskId")
           val res = task.run(
             taskAttemptId = taskId,
             attemptNumber = attemptNumber,

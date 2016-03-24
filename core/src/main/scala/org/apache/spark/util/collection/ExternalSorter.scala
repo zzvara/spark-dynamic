@@ -195,30 +195,30 @@ private[spark] class ExternalSorter[K, V, C](
     case None => None
   }
 
-  if(getRepartitioner.isDefined) partitioner = getRepartitioner
+  if(getRepartitioner.isDefined) {
+    partitioner = getRepartitioner
+  }
 
   private var newPartitioner: Option[Partitioner] = None
 
   private def updateCurrentVersion(): Unit = {
-    repartitioningInfo match {
-      case Some(info) =>
-        currentRepartitioningVersion = info.version
-      case None =>
-        currentRepartitioningVersion = None
-    }
+    currentRepartitioningVersion = getVersion
   }
 
   private def isVersionChanged: Boolean = {
     currentRepartitioningVersion != getVersion
   }
 
+
+  val taskId = repartitioningInfo.map(_.taskID.toString).getOrElse("unknown")
+  val stageId = repartitioningInfo.map(_.stageID.toString).getOrElse("unknown")
   val taskInfo = s"stage ${repartitioningInfo.map(_.stageID).getOrElse("unknown")} " +
                  s"task ${repartitioningInfo.map(_.taskID).getOrElse("unknown")}"
 
   updateCurrentVersion()
 
   def insertAll(records: Iterator[Product2[K, V]]): Unit = {
-    logDebug(s"Started execution of $taskInfo with partitioner $partitioner",
+    logDebug(s"Started execution of $taskInfo with partitioner $partitioner, records.hasNext = ${records.hasNext}",
               "DRRepartitioning", "DRDebug")
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
@@ -249,6 +249,9 @@ private[spark] class ExternalSorter[K, V, C](
       if(records.hasNext) {
         logInfo(s"Stopped building histogram for $taskInfo.", "DRHistogram", "DRDebug")
       }
+      if (!partitioner.get.isInstanceOf[KeyIsolationPartitioner]) {
+        logError(s"Failed to repartition $taskInfo")
+      }
       while(records.hasNext) {
         addElementsRead()
         kv = records.next()
@@ -265,10 +268,13 @@ private[spark] class ExternalSorter[K, V, C](
         buffer.insert(partitionId, kv._1, kv._2.asInstanceOf[C])
         maybeSpillCollection(usingMap = false)
       }
-      if(records.hasNext) {
+      if (records.hasNext) {
         logInfo(s"Stopped building histogram for $taskInfo.", "DRHistogram", "DRDebug")
       }
-      while(records.hasNext) {
+      if (!partitioner.get.isInstanceOf[KeyIsolationPartitioner]) {
+        logError(s"Failed to repartition $taskInfo")
+      }
+      while (records.hasNext) {
         addElementsRead()
         val kv = records.next()
         val partitionId = getPartition(kv._1)
@@ -290,7 +296,7 @@ private[spark] class ExternalSorter[K, V, C](
 //      logInfo(s"Number of seen records since last spill and " +
 //              s"before repartitioning $taskInfo: $before", "DRDebug")
       setRepartitioner(
-        getRepartitioner.getOrElse(throw new RuntimeException("Repartitioner not found!")))
+        getRepartitioner.getOrElse(throw new RuntimeException(s"Repartitioner not found for version $currentRepartitioningVersion $taskInfo!")))
       repartition()
       logDebug(s"Finished repartitioning for $taskInfo.", "DRRepartitioning")
 //      val after = _elementsRead
@@ -300,7 +306,10 @@ private[spark] class ExternalSorter[K, V, C](
 //      }
     }
     // TODO may be wrong!
-    currentRepartitioningVersion.isDefined
+    repartitioningInfo match {
+      case Some(ri) => !ri.trackingFinished
+      case None => false
+    }
   }
 
   /**
@@ -936,7 +945,7 @@ private[spark] class ExternalSorter[K, V, C](
   }
 
   def setRepartitioner(newPartitioner: Partitioner): Unit = {
-    logDebug(s"Setting repartitioner for $taskInfo.", "DRRepartitioning")
+    logDebug(s"Setting repartitioner $newPartitioner for $taskInfo.", "DRRepartitioning")
     if (numPartitions > 1) {
       this.newPartitioner = Some(newPartitioner)
     }
