@@ -295,6 +295,7 @@ private[spark] class ExternalSorter[K, V, C](
 //      val before = _elementsRead
 //      logInfo(s"Number of seen records since last spill and " +
 //              s"before repartitioning $taskInfo: $before", "DRDebug")
+
       setRepartitioner(
         getRepartitioner.getOrElse(throw new RuntimeException(s"Repartitioner not found for version $currentRepartitioningVersion $taskInfo!")))
       repartition()

@@ -442,27 +442,15 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
     case RepartitioningStrategy(stageID, repartitioner, version) =>
       logInfo(s"Received repartitioning strategy for stage $stageID with repartitioner $repartitioner.",
         "DRCommunication", "DRRepartitioner", "cyan")
-      stageData.get(stageID) match {
-        case Some(sd) =>
-          val scannedTasks = sd.scannedTasks.get
-          sd.partitioner = Some(repartitioner)
-          sd.version = Some(version)
-          logInfo(s"Scanned tasks before repartitioning on worker $executorId, ${sd.scannedTasks}",
-            "DRRepartitioner")
-          logInfo(s"Scanned partitions are" +
-            s" ${scannedTasks.values.map(_.scanner.taskContext.partitionId())}",
-            "DRRepartitioner")
-          scannedTasks.values.foreach(wtd => {
-            wtd.info.updateRepartitioner(repartitioner, version)
-            logInfo(s"Repartitioner set for stage $stageID task ${wtd.info.taskID} on" +
-              s"worker $executorId", "DRRepartitioner")
-          })
-        case None =>
-          logWarning(s"Repartitioner arrived for non-registered stage of id $stageID." +
-            s"Doing nothing.", "DRRepartitioner")
-      }
+      updateRepartitioners(stageID, repartitioner, version)
       logInfo(s"Finished processing repartitioning strategy for stage $stageID.",
         "cyan")
+      if (SparkEnv.get.conf.getBoolean("spark.repartitioning.only.once", true)) {
+        logInfo("Shutting down scanners because repartitioning mode is set to only-once")
+        logInfo(s"Stopping scanners for stage $stageID on executor $executorId.",
+          "DRCommunication", "cyan")
+        stopScanners(stageID)
+      }
     case ShutDownScanners(stageID) =>
       logInfo(s"Stopping scanners for stage $stageID on executor $executorId.",
         "DRCommunication", "cyan")
@@ -479,6 +467,28 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
 //      stopScanners(stageID)
 //    }
 //  }
+
+  private def updateRepartitioners(stageID: Int, repartitioner: Partitioner, version: Int): Unit = {
+    stageData.get(stageID) match {
+      case Some(sd) =>
+        val scannedTasks = sd.scannedTasks.get
+        sd.partitioner = Some(repartitioner)
+        sd.version = Some(version)
+        logInfo(s"Scanned tasks before repartitioning on worker $executorId, ${sd.scannedTasks}",
+          "DRRepartitioner")
+        logInfo(s"Scanned partitions are" +
+          s" ${scannedTasks.values.map(_.scanner.taskContext.partitionId())}",
+          "DRRepartitioner")
+        scannedTasks.values.foreach(wtd => {
+          wtd.info.updateRepartitioner(repartitioner, version)
+          logInfo(s"Repartitioner set for stage $stageID task ${wtd.info.taskID} on" +
+            s"worker $executorId", "DRRepartitioner")
+        })
+      case None =>
+        logWarning(s"Repartitioner arrived for non-registered stage of id $stageID." +
+          s"Doing nothing.", "DRRepartitioner")
+    }
+  }
 
   private def stopScanners(stageID: Int): Unit = {
     stageData.get(stageID) match {
@@ -504,12 +514,12 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
     }
   }
 
-  def isStageDone(stageID: Int): Boolean = {
-    stageData.get(stageID) match {
-      case Some(sd) => sd.isRepartitioningFinished()
-      case None => true
-    }
-  }
+//  def isStageDone(stageID: Int): Boolean = {
+//    stageData.get(stageID) match {
+//      case Some(sd) => sd.isRepartitioningFinished()
+//      case None => true
+//    }
+//  }
 }
 
 private[spark] object RepartitioningTracker extends Logging {
@@ -662,10 +672,8 @@ class Strategy(stageID: Int,
           if (decide()) {
             repartitionCount += 1
             if (SparkEnv.get.conf.getBoolean("spark.repartitioning.only.once", true)) {
-              logInfo("Shutting down scanners because repartitioning mode is set to only-once")
               SparkEnv.get.repartitioningTracker
-                .asInstanceOf[RepartitioningTrackerMaster]
-                .shutDownScanners(stageID)
+                .asInstanceOf[RepartitioningTrackerMaster].doneRepartitioning = true
             }
           }
         }
