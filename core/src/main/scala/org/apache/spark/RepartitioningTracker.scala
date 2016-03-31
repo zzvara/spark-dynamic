@@ -636,6 +636,7 @@ class Strategy(stageID: Int,
   private val numPartitions = partitioner.numPartitions
   var repartitionCount = 0
   private val histograms = mutable.HashMap[Int, DataCharacteristics[Any]]()
+  private var numRecords: Long = 0
   private val broadcastHistory = mutable.ArrayBuffer[Partitioner]()
   private var currentVersion = 0
   private var cut = SparkEnv.get.conf.getInt("spark.repartitioning.default-cut", 2)
@@ -669,6 +670,7 @@ class Strategy(stageID: Int,
         histograms.update(partitionID, keyHistogram)
         if (!SparkEnv.get.conf.getBoolean("spark.repartitioning.only.once", true) ||
           repartitionCount == 0) {
+          numRecords += histogramMeta.recordsPassed
           if (decide()) {
             repartitionCount += 1
             if (SparkEnv.get.conf.getBoolean("spark.repartitioning.only.once", true)) {
@@ -705,6 +707,7 @@ class Strategy(stageID: Int,
 
     if (histograms.size >=
       SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) {
+      logInfo(s"Number of received histograms: ${histograms.size}", "strongCyan")
       repartition(globalHistogram)
       true
     } else {
@@ -713,9 +716,9 @@ class Strategy(stageID: Int,
   }
 
   override protected def repartition(globalHistogram: Seq[(Any, Double)]): Unit = {
-    val height = globalHistogram.map(_._2).sum
+//    val height = globalHistogram.map(_._2).sum
     val sortedNormedHistogram = globalHistogram.take(numPartitions).map(r =>
-      (r._1, r._2, r._2.toDouble / height))
+      (r._1, r._2, r._2.toDouble / numRecords))
     logInfo(
       sortedNormedHistogram.foldLeft(
         s"Global histogram for repartitioning " +
