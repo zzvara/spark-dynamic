@@ -164,7 +164,8 @@ object AccumulatorParam {
       * Rate in which records are put into the histogram.
       * Value represent that each n-th input is recorded.
       */
-    private var sampleRate: Double = 1.0
+    private var _sampleRate: Double = 1.0
+    def sampleRate = _sampleRate
     /**
       * Size or width of the histogram, that is equal to the size of the map.
       */
@@ -179,21 +180,26 @@ object AccumulatorParam {
     def version: Int = _version
     def incrementVersion: Unit = { _version += 1 }
 
+    def normalize(histogram: Map[Any, Double], normalizationParam: Long): Map[Any, Double] = {
+      val normalizationFactor = normalizationParam * sampleRate
+      histogram.mapValues(_ / normalizationFactor)
+    }
+
     override def addAccumulator(r: Map[Any, Double], t: Map[Any, Double]): Map[Any, Double] = {
       val key = t.toList.head._1
       _recordsPassed += 1
-      if (Math.random() <= sampleRate) { // Decided to record the key.
+      if (Math.random() <= _sampleRate) { // Decided to record the key.
         val updatedHistogram = r + ((key,
           r.get(key) match {
             case Some(value) => value + 1.0
             case None =>
               _width = _width + 1
-              sampleRate
+              _sampleRate
           }
         ))
         // Decide if scaling is needed.
-        if (_width * sampleRate >= HISTOGRAM_SCALE_BOUNDARY) {
-          sampleRate = sampleRate / BACKOFF_FACTOR
+        if (_width * _sampleRate >= HISTOGRAM_SCALE_BOUNDARY) {
+          _sampleRate = _sampleRate / BACKOFF_FACTOR
           val scaledHistogram =
             updatedHistogram
               .mapValues(x => x / BACKOFF_FACTOR)

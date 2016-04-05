@@ -1,3 +1,4 @@
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -20,35 +21,37 @@ package org.apache.spark.examples.repartitioning
 
 import org.apache.spark.{SparkConf, SparkContext}
 
+/**
+  * Counts words in new text files created in the given directory
+  * Usage: HdfsWordCount <directory>
+  * <directory> is the directory that Spark Streaming will use to find and read new text files.
+  *
+  * To run this on your local machine on directory `localdir`, run this example
+  * $ bin/run-example \
+  * org.apache.spark.examples.streaming.HdfsWordCount localdir
+  *
+  * Then create a text file in `localdir` and the words in the file will get counted.
+  */
 object WordCount {
   def main(args: Array[String]) {
-    val conf = new SparkConf()
-      .setAppName("Wordcount")
-
-    val initialPartitions = 5
-
-    val sc = new SparkContext(conf)
-    val lines = sc.parallelize(exponentialSampling(400, initialPartitions), initialPartitions)
-      .map(uniformSplit(_, initialPartitions, 4))
-      .map( x => {
-        Thread.sleep(100)
-        (x, 1)
-      })
-      .groupByKey(5)
-    lines.collect()
-      .foreach(tup => println(tup))
-  }
-
-  def exponentialSampling(size: Int, width: Int): Seq[Long] = {
-    (1 to size).map{
-      x => Math.log(1 + (Math.exp(width) - 1) * Math.random())
-    } map {
-      Math.ceil(_).toLong
+    if (args.length < 1) {
+      System.err.println("Usage: HdfsWordCount <directory>")
+      System.exit(1)
     }
-  }
 
-  def uniformSplit(point: Long, width: Int, splitSize: Int): Long = {
-      Math.floor(Math.random() * splitSize).toLong * width + point
+    val sparkConf = new SparkConf().setAppName("HdfsWordCount")
+    // Create the context
+    val sc = new SparkContext(sparkConf)
+
+    // Create the FileInputDStream on the directory and use the
+    // stream to count words in new files created
+    val lines = sc.textFile(args(0), 10)
+    val words = lines.flatMap(_.split(" "))
+    val wordCounts = words.map(x => (x, 1)).reduceByKey(_ + _)
+    wordCounts.foreach(println)
+
+    Thread.sleep(1000 * 60 * 5)
   }
 }
+
 // scalastyle:on println
