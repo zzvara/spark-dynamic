@@ -292,6 +292,7 @@ private[v1] object AllStagesResource {
     new ShuffleWriteMetrics(
       bytesWritten = internal.bytesWritten,
       writeTime = internal.writeTime,
+      repartitioningTime = internal.repartitioningTime,
       recordsWritten = internal.recordsWritten,
       dataCharacteristics = internal.dataCharacteristics.localValue
     )

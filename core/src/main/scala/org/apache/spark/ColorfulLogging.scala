@@ -17,7 +17,7 @@
 
 package org.apache.spark
 
-import java.io.FileInputStream
+import java.io.{FileNotFoundException, FileInputStream}
 import java.util.Properties
 import javax.lang.model.SourceVersion
 
@@ -266,15 +266,13 @@ trait ColorfulLogging extends Logging {
 object ColorfulLogging extends Logging {
   private val ROOT = "root"
   private val propertiesPath =
-    "core/target/scala-2.11/classes/org/apache/spark/colorful-logging.properties"
+    "conf/colorful-logging.properties"
   private val properties = getProperties
 
   private val isColorfulLoggingOn = properties.getProperty("isColorfulLoggingOn", "false").toBoolean
   private val logToRootLogger = properties.getProperty("logToRootLogger", "false").toBoolean
   private val tracksToColors = mutable.Map[String, mutable.Set[String]]()
   private val suppressedColors = mutable.Set[String]()
-  //  println("#logToRoot: " + logToRootLogger)
-  //  println("#isColorfulLoggingOn: " + isColorfulLoggingOn)
   private val colors = Set[String]("default", "black", "grey", "red", "yellow", "green", "cyan", "blue", "magenta")
   private val strongColors = colors.map("strong" + _.capitalize)
   private val colorsAndRoot = colors ++ strongColors + ROOT
@@ -339,7 +337,6 @@ object ColorfulLogging extends Logging {
       val s = properties.getProperty(ROOT, "")
       if (s.nonEmpty) {
         s.split(",").toSet[String].map(_.trim).foreach { (x: String) =>
-          //        if (x.isEmpty) throw new RuntimeException(s"Empty trace name is invalid for root")
           if (!SourceVersion.isName(x) || colorsAndRoot.contains(x))
             throw new RuntimeException(s"'$x' is not a valid track name for color root")
           tracksToColors.get(x) match {
@@ -353,9 +350,14 @@ object ColorfulLogging extends Logging {
 
   private def getProperties: Properties = {
     val properties: Properties = new Properties()
-    val in = new FileInputStream(propertiesPath)
-    properties.load(in)
-    in.close()
+    try {
+      val in = new FileInputStream(propertiesPath)
+      properties.load(in)
+      in.close()
+    } catch {
+      case t: FileNotFoundException =>
+        logWarning("Could not load colorful logging properties file.")
+    }
     properties
   }
 

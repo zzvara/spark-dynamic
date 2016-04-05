@@ -34,6 +34,7 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   private[executor] val _bytesWritten = new LongAccumulator
   private[executor] val _recordsWritten = new LongAccumulator
   private[executor] val _writeTime = new LongAccumulator
+  private[executor] val _repartitioningTime = new LongAccumulator
   private[executor] val _dataCharacteristics = new Accumulator[Seq[(Any, Int)]]
 
   private var _repartitioner: Option[Partitioner] = None
@@ -87,12 +88,18 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
    */
   def writeTime: Long = _writeTime.sum
 
+  /**
+   * Time the task spent repartitioning the previously written data.
+   */
+  def repartitioningTime: Long = _repartitioningTime.localValue
+
   private[spark] def addKeyWritten(k: Any): Unit = {
     _dataCharacteristics.add(Map[Any, Double](k -> 1.0))
   }
   private[spark] def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)
   private[spark] def incWriteTime(v: Long): Unit = _writeTime.add(v)
+  private[spark] def incRepartitioningTime(v: Long): Unit = _repartitioningTime.add(v)
   private[spark] def decBytesWritten(v: Long): Unit = {
     _bytesWritten.setValue(bytesWritten - v)
   }
@@ -108,7 +115,6 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   def shuffleWriteTime: Long = writeTime
   @deprecated("use recordsWritten instead", "2.0.0")
   def shuffleRecordsWritten: Long = recordsWritten
-
 }
 
 object ShuffleWriteMetrics {

@@ -69,6 +69,7 @@ private[spark] object InternalAccumulator {
     val BYTES_WRITTEN = SHUFFLE_WRITE_METRICS_PREFIX + "bytesWritten"
     val RECORDS_WRITTEN = SHUFFLE_WRITE_METRICS_PREFIX + "recordsWritten"
     val WRITE_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "writeTime"
+    val REPARTITIONING_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "repartitioningTime"
     val DATA_CHARACTERISTICS = SHUFFLE_WRITE_METRICS_PREFIX + "dataCharacteristics"
   }
 

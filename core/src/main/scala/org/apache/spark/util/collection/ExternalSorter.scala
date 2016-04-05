@@ -297,9 +297,18 @@ private[spark] class ExternalSorter[K, V, C](
 //              s"before repartitioning $taskInfo: $before", "DRDebug")
 
       setRepartitioner(
+<<<<<<< refs/remotes/origin/dynamic-repartitioning
         getRepartitioner.getOrElse(throw new RuntimeException(s"Repartitioner not found for version $currentRepartitioningVersion $taskInfo!")))
+=======
+        getRepartitioner.getOrElse(throw new RuntimeException("Repartitioner not found!")))
+      val repartitioningStartedTime = System.currentTimeMillis()
+>>>>>>> Fixed colorful-logging bug on YARN. Fixed a bug in RepartitioningTracker. Added repartitioning timer as Accumulator.
       repartition()
-      logDebug(s"Finished repartitioning for $taskInfo.", "DRRepartitioning")
+      val repartitioningTime = System.currentTimeMillis() - repartitioningStartedTime
+      logInfo(s"Repartitioning took $repartitioningTime milliseconds for $taskInfo.")
+      context.taskMetrics().shuffleWriteMetrics.foreach {
+        _.incRepartitioningTime(repartitioningTime)
+      }
 //      val after = _elementsRead
 //      logInfo(s"Number of seen records after repartitioning $taskInfo: $after", "DRDebug")
 //      if (before != after) {

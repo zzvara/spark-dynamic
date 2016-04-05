@@ -677,8 +677,11 @@ class Strategy(stageID: Int,
           if (decide()) {
             repartitionCount += 1
             if (SparkEnv.get.conf.getBoolean("spark.repartitioning.only.once", true)) {
+              /*
               SparkEnv.get.repartitioningTracker
-                .asInstanceOf[RepartitioningTrackerMaster].doneRepartitioning = true
+                .asInstanceOf[RepartitioningTrackerMaster]
+                .shutDownScanners(stageID)
+                */
             }
           }
         }

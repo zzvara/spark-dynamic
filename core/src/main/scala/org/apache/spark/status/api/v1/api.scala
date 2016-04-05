@@ -215,6 +215,7 @@ class BlockFetchInfo private[spark](
 class ShuffleWriteMetrics private[spark](
     val bytesWritten: Long,
     val writeTime: Long,
+    val repartitioningTime: Long,
     val recordsWritten: Long,
     val dataCharacteristics: Map[Any, Double])
 
