@@ -428,14 +428,9 @@ private[spark] class BlockManager(
       case Some(info) =>
         val level = info.level
         logDebug(s"Level for block $blockId is $level")
-        // Look for the block in memory
-        if (level.useMemory) {
-          logDebug(s"Getting block $blockId from memory")
-          val result = if (asBlockResult) {
-            memoryStore.getValues(blockId).map { iter =>
-              val ci = CompletionIterator[Any, Iterator[Any]](iter, releaseLock(blockId))
-              new BlockResult(blockId, ci, DataReadMethod.Memory, info.size)
-            }
+        if (level.useMemory && memoryStore.contains(blockId)) {
+          val iter: Iterator[Any] = if (level.deserialized) {
+            memoryStore.getValues(blockId).get
           } else {
             serializerManager.dataDeserializeStream(
               blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
@@ -530,7 +525,7 @@ private[spark] class BlockManager(
     getRemoteBytes(blockId).map { data =>
       val values =
         serializerManager.dataDeserializeStream(blockId, data.toInputStream(dispose = true))
-      new BlockResult(values, DataReadMethod.Network, data.size)
+      new BlockResult(blockId, values, DataReadMethod.Network, data.size)
     }
   }
 

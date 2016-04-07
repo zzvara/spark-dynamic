@@ -22,17 +22,18 @@ import java.util.Properties
 import javax.lang.model.SourceVersion
 
 import org.apache.spark.ColorfulLogging._
+import org.apache.spark.internal.Logging
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.mutable
 
-//Tracks:
-//Dynamic repartitioning:
-//-"DRCommunication"
-//-"DRHistogram"
-//-"DRRepartitioner"
-//-"DRRepartitioning"
-//-"DRDebug"
+// Tracks:
+// Dynamic repartitioning:
+// -"DRCommunication"
+// -"DRHistogram"
+// -"DRRepartitioner"
+// -"DRRepartitioning"
+// -"DRDebug"
 
 /**
   * Colored loggers must be defined in log4j-defaults.properties!
@@ -74,7 +75,6 @@ trait ColorfulLogging extends Logging {
     } else {
       var logg = getLogger(color)
       if (logg == null) {
-        initializeIfNecessary()
         logg = updateLogger(color, LoggerFactory.getLogger(logName(color)))
       }
       logg
@@ -263,7 +263,7 @@ trait ColorfulLogging extends Logging {
   }
 }
 
-object ColorfulLogging extends Logging {
+object ColorfulLogging {
   private val ROOT = "root"
   private val propertiesPath =
     "conf/colorful-logging.properties"
@@ -273,7 +273,8 @@ object ColorfulLogging extends Logging {
   private val logToRootLogger = properties.getProperty("logToRootLogger", "false").toBoolean
   private val tracksToColors = mutable.Map[String, mutable.Set[String]]()
   private val suppressedColors = mutable.Set[String]()
-  private val colors = Set[String]("default", "black", "grey", "red", "yellow", "green", "cyan", "blue", "magenta")
+  private val colors = Set[String]("default", "black", "grey", "red",
+                                   "yellow", "green", "cyan", "blue", "magenta")
   private val strongColors = colors.map("strong" + _.capitalize)
   private val colorsAndRoot = colors ++ strongColors + ROOT
 
@@ -283,7 +284,6 @@ object ColorfulLogging extends Logging {
       parseTracksForColor(color)
     }
     parseTracksForRoot()
-    logInfo(s"Track-color assignment: $tracksToColors")
   }
 
   private def parseSuppressedColors(): Unit = {
@@ -319,7 +319,7 @@ object ColorfulLogging extends Logging {
               case None => tracksToColors.update(y, mutable.Set[String](strongColor))
             }
           } else {
-            if (!SourceVersion.isName(x) || colorsAndRoot.contains(x)){
+            if (!SourceVersion.isName(x) || colorsAndRoot.contains(x)) {
               throw new RuntimeException(s"'$x' is not a valid track name for color $color")
             }
             tracksToColors.get(x) match {
@@ -337,8 +337,9 @@ object ColorfulLogging extends Logging {
       val s = properties.getProperty(ROOT, "")
       if (s.nonEmpty) {
         s.split(",").toSet[String].map(_.trim).foreach { (x: String) =>
-          if (!SourceVersion.isName(x) || colorsAndRoot.contains(x))
+          if (!SourceVersion.isName(x) || colorsAndRoot.contains(x)) {
             throw new RuntimeException(s"'$x' is not a valid track name for color root")
+          }
           tracksToColors.get(x) match {
             case Some(cs) => cs.add(ROOT)
             case None => tracksToColors.update(x, mutable.Set[String](ROOT))
@@ -355,8 +356,7 @@ object ColorfulLogging extends Logging {
       properties.load(in)
       in.close()
     } catch {
-      case t: FileNotFoundException =>
-        logWarning("Could not load colorful logging properties file.")
+      case t: FileNotFoundException => ()
     }
     properties
   }

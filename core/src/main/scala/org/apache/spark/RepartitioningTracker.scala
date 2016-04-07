@@ -21,6 +21,7 @@ import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark.RepartitioningTracker.Histogram
 import org.apache.spark.executor.RepartitioningInfo
 import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristics
+import org.apache.spark.internal.Logging
 import org.apache.spark.rpc._
 import org.apache.spark.scheduler._
 import org.apache.spark.util.{TaskCompletionListener, ThreadUtils}
@@ -93,7 +94,7 @@ case class RepartitioningStageData(
   var scannerPrototype: ScannerPrototype,
   var scannedTasks: Option[Map[Long, WorkerTaskData]] = Some(Map[Long, WorkerTaskData]()),
   var partitioner: Option[Partitioner] = None,
-  var version: Option[Int] = Some(0)){
+  var version: Option[Int] = Some(0)) {
 
   var _repartitioningFinished = false
 
@@ -113,7 +114,7 @@ case class WorkerTaskData(info: RepartitioningInfo, scanner: Scanner)
   * Each
   */
 private[spark] abstract class RepartitioningTracker(conf: SparkConf)
-  extends Logging with RpcEndpoint {
+  extends SparkListener with ColorfulLogging with RpcEndpoint {
   var master: RpcEndpointRef = _
 }
 
@@ -125,7 +126,7 @@ private[spark] abstract class RepartitioningTracker(conf: SparkConf)
   */
 private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
                                                  conf: SparkConf)
-  extends RepartitioningTracker(conf) with SparkListener with ColorfulLogging {
+  extends RepartitioningTracker(conf) with ColorfulLogging {
   /**
     * Collection of repartitioning workers. We expect them to register.
     */
@@ -383,7 +384,8 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
             val thread = new Thread(scanner)
             thread.start()
             logInfo(s"Scanner started for task $taskID.")
-            sd.scannedTasks = Some(sd.scannedTasks.get + (taskID -> new WorkerTaskData(repartitioningInfo, scanner)))
+            sd.scannedTasks = Some(
+              sd.scannedTasks.get + (taskID -> new WorkerTaskData(repartitioningInfo, scanner)))
           }
 
           logInfo(s"Added TaskContext $taskContext for stage $stageID task $taskID to" +
@@ -440,8 +442,9 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
       logInfo(s"Received scan strategy for stage $stageID", "DRCommunication")
       stageData.put(stageID, new RepartitioningStageData(scanner))
     case RepartitioningStrategy(stageID, repartitioner, version) =>
-      logInfo(s"Received repartitioning strategy for stage $stageID with repartitioner $repartitioner.",
-        "DRCommunication", "DRRepartitioner", "cyan")
+      logInfo(s"Received repartitioning strategy for" +
+              s"stage $stageID with repartitioner $repartitioner.",
+              "DRCommunication", "DRRepartitioner", "cyan")
       updateRepartitioners(stageID, repartitioner, version)
       logInfo(s"Finished processing repartitioning strategy for stage $stageID.",
         "cyan")
@@ -456,7 +459,8 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
         "DRCommunication", "cyan")
       stopScanners(stageID)
     case ClearStageData(stageID) =>
-      logInfo(s"Clearing stage data for stage $stageID on executor $executorId.", "DRCommunication", "cyan")
+      logInfo(s"Clearing stage data for stage $stageID on" +
+              s"executor $executorId.", "DRCommunication", "cyan")
       clearStageData(stageID)
   }
 
@@ -639,11 +643,10 @@ class Strategy(stageID: Int,
   private var minScale = 1.0d
   private val broadcastHistory = mutable.ArrayBuffer[Partitioner]()
   private var currentVersion = 0
-  private val treeDepthHint = SparkEnv.get.conf.getDouble("spark.repartitioning.partitioner-tree-depth", 3)
+  private val treeDepthHint =
+    SparkEnv.get.conf.getDouble("spark.repartitioning.partitioner-tree-depth", 3)
   private val sCutHint = 0
-  //SparkEnv.get.conf.getInt("spark.repartitioning.default-scut", 0)
   private val pCutHint = Math.pow(2, treeDepthHint - 1).toInt
-  // private val cutHint = numPartitions //SparkEnv.get.conf.getInt("spark.repartitioning.default-cut", 2)
 
   private val desiredNumberOfHistograms = numberOfTasks
 
@@ -709,7 +712,8 @@ class Strategy(stageID: Int,
       SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) {
       logInfo(s"Number of received histograms: ${histograms.size}", "strongCyan")
       val numRecords =
-        histograms.values.map(_.getParam.asInstanceOf[DataCharacteristicsAccumulatorParam].recordsPassed).sum
+        histograms.values.map(
+          _.getParam.asInstanceOf[DataCharacteristicsAccumulatorParam].recordsPassed).sum
 
       val globalHistogram =
         histograms.values.map(h => h.getParam.asInstanceOf[DataCharacteristicsAccumulatorParam]
@@ -778,7 +782,7 @@ class Strategy(stageID: Int,
     val startingCut = Math.min(numPartitions, highestValues.length)
     var calculatedSCut = 0
 
-    //val currentCut = numPartitions // Math.min(cutHint, highestValues.length)
+    // val currentCut = numPartitions // Math.min(cutHint, highestValues.length)
 
     def countLevel(i: Int): Unit = {
       if (i < startingCut && level <= highestValues(i)) {

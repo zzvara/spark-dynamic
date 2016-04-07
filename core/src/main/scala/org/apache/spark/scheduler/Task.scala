@@ -22,6 +22,8 @@ import java.nio.ByteBuffer
 import java.util.Properties
 
 import scala.collection.mutable
+import org.apache.spark.internal.Logging
+
 import scala.collection.mutable.HashMap
 
 import org.apache.spark._

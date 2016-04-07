@@ -218,8 +218,9 @@ private[spark] class ExternalSorter[K, V, C](
   updateCurrentVersion()
 
   def insertAll(records: Iterator[Product2[K, V]]): Unit = {
-    logDebug(s"Started execution of $taskInfo with partitioner $partitioner, records.hasNext = ${records.hasNext}",
-              "DRRepartitioning", "DRDebug")
+    logDebug(s"Started execution of $taskInfo with" +
+             s"partitioner $partitioner, records.hasNext = ${records.hasNext}",
+             "DRRepartitioning", "DRDebug")
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
     val shuffleWriteMetrics = context.taskMetrics().shuffleWriteMetrics
@@ -297,12 +298,9 @@ private[spark] class ExternalSorter[K, V, C](
 //              s"before repartitioning $taskInfo: $before", "DRDebug")
 
       setRepartitioner(
-<<<<<<< refs/remotes/origin/dynamic-repartitioning
-        getRepartitioner.getOrElse(throw new RuntimeException(s"Repartitioner not found for version $currentRepartitioningVersion $taskInfo!")))
-=======
-        getRepartitioner.getOrElse(throw new RuntimeException("Repartitioner not found!")))
+        getRepartitioner.getOrElse(throw new RuntimeException(
+            s"Repartitioner not found for version $currentRepartitioningVersion $taskInfo!")))
       val repartitioningStartedTime = System.currentTimeMillis()
->>>>>>> Fixed colorful-logging bug on YARN. Fixed a bug in RepartitioningTracker. Added repartitioning timer as Accumulator.
       repartition()
       val repartitioningTime = System.currentTimeMillis() - repartitioningStartedTime
       logInfo(s"Repartitioning took $repartitioningTime milliseconds for $taskInfo.")

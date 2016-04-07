@@ -17,9 +17,10 @@
 
 package org.apache.spark.executor
 
+import org.apache.spark.internal.Logging
 import org.apache.spark.status.api.v1.BlockFetchInfo
 import org.apache.spark.storage.BlockResult
-import org.apache.spark.{SparkEnv, Logging, Accumulator, InternalAccumulator}
+import org.apache.spark.{SparkEnv, Accumulator, InternalAccumulator}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.util.LongAccumulator
 
