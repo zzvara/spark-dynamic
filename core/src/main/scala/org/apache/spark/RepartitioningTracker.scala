@@ -40,7 +40,8 @@ private[spark] case class ShuffleWriteStatus[T](
   stageID: Int,
   taskID: Long,
   partitionID: Int,
-  keyHistogram: DataCharacteristics[T]) extends RepartitioningTrackerMessage
+  keyHistogram: DataCharacteristics[T],
+  histogramDump: Map[Any, Double]) extends RepartitioningTrackerMessage
 
 private[spark] case class FinalHistogram[T](
   stageID: Int,
@@ -57,6 +58,9 @@ private[spark] case class Register(executorID: String, workerReferece: RpcEndpoi
   * Scan strategy message sent to workers.
   */
 private[spark] case class ScanStrategy(stageID: Int, scanner: ScannerPrototype)
+  extends RepartitioningTrackerMessage
+
+private[spark] case class ScanStrategies(scanStrategies: List[ScanStrategy])
   extends RepartitioningTrackerMessage
 
 /**
@@ -87,7 +91,11 @@ object RepartitioningModes extends Enumeration {
   val ON, ONLY_ONCE, OFF = Value
 }
 
-case class MasterStageData(info: StageInfo, strategy: Strategy, mode: RepartitioningModes.Value)
+case class MasterStageData(
+  info: StageInfo,
+  strategy: Strategy,
+  mode: RepartitioningModes.Value,
+  scanStrategy: ScanStrategy)
 
 case class RepartitioningStageData(
   var scannerPrototype: ScannerPrototype,
@@ -191,6 +199,9 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
           logInfo(s"Registering worker from executor {$executorID}.", "DRCommunication")
           workers.put(executorID, new Worker(executorID, workerReference))
           context.reply(true)
+          workerReference.send(new ScanStrategies(
+            _stageData.map(_._2.scanStrategy).toList
+          ))
         }
 
       /**
@@ -200,7 +211,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
         * belongs to.
         */
       case ShuffleWriteStatus(stageID, taskID, partitionID,
-                              keyHistogram: DataCharacteristics[Any]) =>
+                              keyHistogram: DataCharacteristics[Any], histogramDump: Map[Any, Double]) =>
         logInfo(s"Received ShuffleWriteStatus message for " +
           s"stage $stageID and task $taskID", "DRCommunication")
         _stageData.get(stageID) match {
@@ -265,13 +276,14 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
                 "DRCommunication")
       } else {
         val stageID = stageSubmitted.stageInfo.stageId
-        logInfo(s"A stage with id $stageID submitted with dinamic repartitioning " +
-                s"mode $repartitioningMode", "DRCommunication")
+        logInfo(s"A stage with id $stageID submitted with dynamic repartitioning " +
+                s"mode $repartitioningMode.", "DRCommunication")
+        val scanStrategy = new ScanStrategy(stageID, new ThroughputPrototype())
         _stageData.update(stageID,
           new MasterStageData(stageInfo,
                               new Strategy(stageID, stageInfo.numTasks, partitioner.get),
-                              repartitioningMode))
-        val scanStrategy = new ScanStrategy(stageID, new ThroughputPrototype())
+                              repartitioningMode,
+                              scanStrategy))
         logInfo(s"Sending repartitioning scan-strategy to each worker for " +
                 s"job $stageID", "DRCommunication")
         workers.values.foreach(_.reference.send(scanStrategy))
@@ -392,7 +404,7 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
           logInfo(s"Scanned tasks after update on worker $executorId, ${sd.scannedTasks}",
                   "scannedTasks")
         case None =>
-          logWarning(s"Task with id $taskID arrived for non-registered stage of id $stageID." +
+          logWarning(s"Task with id $taskID arrived for non-registered stage of id $stageID. " +
                      s"Doing nothing.", "DRCommunication")
       }
     }
@@ -404,10 +416,11 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
   def sendHistogram(stageID: Int, taskID: Long,
                     partitionID: Int,
                     keyHistogram: DataCharacteristics[_]): Unit = {
-    logInfo(s"Sending histogram to driver for stage $stageID task $taskID",
-      "DRCommunication", "DRHistogram")
+    logInfo(s"Sending histogram (with size {${keyHistogram.localValue.size}})" +
+            s"to driver for stage $stageID task $taskID",
+            "DRCommunication", "DRHistogram")
     sendTracker(
-      new ShuffleWriteStatus(stageID, taskID, partitionID, keyHistogram))
+      new ShuffleWriteStatus(stageID, taskID, partitionID, keyHistogram, keyHistogram.localValue.asInstanceOf[Map[Any, Double]]))
   }
 
   def sendFinalHistogram(stageID: Int, taskID: Long, finalHistogram: DataCharacteristics[_]):
@@ -438,7 +451,7 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
 
   override def receive: PartialFunction[Any, Unit] = {
     case ScanStrategy(stageID, scanner) =>
-      logInfo(s"Received scan strategy for stage $stageID", "DRCommunication")
+      logInfo(s"Received scan strategy for stage $stageID.", "DRCommunication")
       stageData.put(stageID, new RepartitioningStageData(scanner))
     case RepartitioningStrategy(stageID, repartitioner, version) =>
       logInfo(s"Received repartitioning strategy for" +
@@ -452,6 +465,12 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
         logInfo(s"Stopping scanners for stage $stageID on executor $executorId.",
           "DRCommunication", "cyan")
         stopScanners(stageID)
+      }
+    case ScanStrategies(scanStrategies) =>
+      logInfo(s"Received a list of scan strategies, with size of ${scanStrategies.length}.")
+      scanStrategies.foreach {
+        scanStrategy =>
+        stageData.put(scanStrategy.stageID, new RepartitioningStageData(scanStrategy.scanner))
       }
     case ShutDownScanners(stageID) =>
       logInfo(s"Stopping scanners for stage $stageID on executor $executorId.",
@@ -688,7 +707,7 @@ class Strategy(stageID: Int,
           }
         }
       } else if (histogramMeta.version < currentVersion) {
-        logInfo(s"Recording outdated histogram arrival for partition $partitionID." +
+        logInfo(s"Recording outdated histogram arrival for partition $partitionID. " +
                 s"Doing nothing.", "DRCommunication", "DRHistogram")
       } else {
         logInfo(s"Recording histogram arrival from a future step for " +
@@ -800,7 +819,7 @@ class Strategy(stageID: Int,
 
     logInfo(s"Repartitioning parameters: numPartitions=$numPartitions, cut=$actualCut," +
       s"sCut=$actualSCut, pCut=$actualPCut, level=$level," +
-      s"block=${(numPartitions - actualCut) * level}, maxKey=${highestValues.head}",
+      s"block=${(numPartitions - actualCut) * level}, maxKey=${highestValues.headOption}",
       "DRRepartitioner")
 
     new PartitioningInfo(numPartitions, actualCut, actualSCut, level)

@@ -209,7 +209,6 @@ private[spark] class ExternalSorter[K, V, C](
     currentRepartitioningVersion != getVersion
   }
 
-
   val taskId = repartitioningInfo.map(_.taskID.toString).getOrElse("unknown")
   val stageId = repartitioningInfo.map(_.stageID.toString).getOrElse("unknown")
   val taskInfo = s"stage ${repartitioningInfo.map(_.stageID).getOrElse("unknown")} " +
@@ -237,7 +236,7 @@ private[spark] class ExternalSorter[K, V, C](
       /**
         * @todo Do a huge refactor!
         */
-      while (records.hasNext && checkAndDoRepartitioning()) {
+      while (records.hasNext) {
         addElementsRead()
         kv = records.next()
         val partitionId = getPartition(kv._1)
@@ -246,57 +245,35 @@ private[spark] class ExternalSorter[K, V, C](
         }
         map.changeValue((partitionId, kv._1), update)
         maybeSpillCollection(usingMap = true)
+        checkAndDoRepartitioning()
       }
       if(records.hasNext) {
         logInfo(s"Stopped building histogram for $taskInfo.", "DRHistogram", "DRDebug")
       }
-      if (!partitioner.get.isInstanceOf[KeyIsolationPartitioner]) {
-        logError(s"Failed to repartition $taskInfo")
-      }
-      while(records.hasNext) {
-        addElementsRead()
-        kv = records.next()
-        map.changeValue((getPartition(kv._1), kv._1), update)
-        maybeSpillCollection(usingMap = true)
-      }
     } else {
       // Stick values into our buffer
-      while (records.hasNext && checkAndDoRepartitioning()) {
+      while (records.hasNext) {
         addElementsRead()
         val kv = records.next()
         val partitionId = getPartition(kv._1)
         shuffleWriteMetrics.foreach(_.addKeyWritten(kv._1))
         buffer.insert(partitionId, kv._1, kv._2.asInstanceOf[C])
         maybeSpillCollection(usingMap = false)
+        checkAndDoRepartitioning()
       }
       if (records.hasNext) {
         logInfo(s"Stopped building histogram for $taskInfo.", "DRHistogram", "DRDebug")
-      }
-      if (!partitioner.get.isInstanceOf[KeyIsolationPartitioner]) {
-        logError(s"Failed to repartition $taskInfo")
-      }
-      while (records.hasNext) {
-        addElementsRead()
-        val kv = records.next()
-        val partitionId = getPartition(kv._1)
-//        shuffleWriteMetrics.foreach(_.addKeyWritten(kv._1))
-        buffer.insert(partitionId, kv._1, kv._2.asInstanceOf[C])
-        maybeSpillCollection(usingMap = false)
       }
     }
 
     logDebug(s"Finished execution of $taskInfo.", "strongBlue")
   }
 
-  private def checkAndDoRepartitioning(): Boolean = {
+  private def checkAndDoRepartitioning(): Unit = {
     if (isVersionChanged) {
       // TODO repartitioning more times when version jumps up more than one
       updateCurrentVersion()
       logDebug(s"Started repartitioning for $taskInfo.", "DRRepartitioning", "DRDebug")
-//      val before = _elementsRead
-//      logInfo(s"Number of seen records since last spill and " +
-//              s"before repartitioning $taskInfo: $before", "DRDebug")
-
       setRepartitioner(
         getRepartitioner.getOrElse(throw new RuntimeException(
             s"Repartitioner not found for version $currentRepartitioningVersion $taskInfo!")))
@@ -307,16 +284,6 @@ private[spark] class ExternalSorter[K, V, C](
       context.taskMetrics().shuffleWriteMetrics.foreach {
         _.incRepartitioningTime(repartitioningTime)
       }
-//      val after = _elementsRead
-//      logInfo(s"Number of seen records after repartitioning $taskInfo: $after", "DRDebug")
-//      if (before != after) {
-//        throw new RuntimeException(s"Repartitioning failed for $taskInfo.")
-//      }
-    }
-    // TODO may be wrong!
-    repartitioningInfo match {
-      case Some(ri) => !ri.trackingFinished
-      case None => false
     }
   }
 

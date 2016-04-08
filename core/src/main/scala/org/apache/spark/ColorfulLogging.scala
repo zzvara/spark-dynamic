@@ -270,7 +270,7 @@ object ColorfulLogging {
   private val properties = getProperties
 
   private val isColorfulLoggingOn = properties.getProperty("isColorfulLoggingOn", "false").toBoolean
-  private val logToRootLogger = properties.getProperty("logToRootLogger", "false").toBoolean
+  private val logToRootLogger = properties.getProperty("logToRootLogger", "true").toBoolean
   private val tracksToColors = mutable.Map[String, mutable.Set[String]]()
   private val suppressedColors = mutable.Set[String]()
   private val colors = Set[String]("default", "black", "grey", "red",
