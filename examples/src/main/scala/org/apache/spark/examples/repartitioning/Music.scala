@@ -38,7 +38,8 @@ object Music {
   def main(args: Array[String]) {
     val configuration = new SparkConf()
       .setAppName("Music")
-      .set("apache.spark.dynamic-repartitioning", "true")
+        .setJars(Seq("/home/ehnalis/Projects/dyna/assembly/target/scala-2.11/jars/spark-assembly_2.11-2.0.0-SNAPSHOT.jar",
+          "/home/ehnalis/Projects/dyna/examples/target/scala-2.11/jars/spark-examples_2.11-2.0.0-SNAPSHOT.jar"))
 
     implicit val context = new SparkContext(configuration)
 

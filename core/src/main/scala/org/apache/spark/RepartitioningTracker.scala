@@ -18,7 +18,6 @@
 package org.apache.spark
 
 import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
-import org.apache.spark.RepartitioningTracker.Histogram
 import org.apache.spark.executor.RepartitioningInfo
 import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristics
 import org.apache.spark.internal.Logging
@@ -263,7 +262,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
       }
       if (repartitioningMode == RepartitioningModes.OFF) {
         logInfo(s"A stage submitted, but dynamic repartitioning is switched off.",
-          "DRCommunication")
+                "DRCommunication")
       } else {
         val stageID = stageSubmitted.stageInfo.stageId
         logInfo(s"A stage with id $stageID submitted with dinamic repartitioning " +
