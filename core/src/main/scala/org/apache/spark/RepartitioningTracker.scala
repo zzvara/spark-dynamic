@@ -32,16 +32,16 @@ import scala.util.hashing.MurmurHash3
   * Represents a message between repartitioning trackers.
   */
 private[spark] sealed trait RepartitioningTrackerMessage
+  extends Serializable
 
 /**
   * Shuffle write status message.
   */
-private[spark] case class ShuffleWriteStatus[T](
+private[spark] case class ShuffleWriteStatus[T: ClassTag](
   stageID: Int,
   taskID: Long,
   partitionID: Int,
-  keyHistogram: DataCharacteristics[T],
-  histogramDump: Map[Any, Double]) extends RepartitioningTrackerMessage
+  keyHistogram: DataCharacteristics[T]) extends RepartitioningTrackerMessage
 
 private[spark] case class FinalHistogram[T](
   stageID: Int,
@@ -211,7 +211,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
         * belongs to.
         */
       case ShuffleWriteStatus(stageID, taskID, partitionID,
-                              keyHistogram: DataCharacteristics[Any], histogramDump: Map[Any, Double]) =>
+                              keyHistogram: DataCharacteristics[Any]) =>
         logInfo(s"Received ShuffleWriteStatus message for " +
           s"stage $stageID and task $taskID", "DRCommunication")
         _stageData.get(stageID) match {
@@ -416,11 +416,15 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
   def sendHistogram(stageID: Int, taskID: Long,
                     partitionID: Int,
                     keyHistogram: DataCharacteristics[_]): Unit = {
-    logInfo(s"Sending histogram (with size {${keyHistogram.localValue.size}})" +
+    logInfo(s"Sending histogram (with size ${keyHistogram.localValue.size})" +
+            s" (records passed is ${
+              keyHistogram.getParam.asInstanceOf[DataCharacteristicsAccumulatorParam]
+                .recordsPassed
+            }) " +
             s"to driver for stage $stageID task $taskID",
             "DRCommunication", "DRHistogram")
     sendTracker(
-      new ShuffleWriteStatus(stageID, taskID, partitionID, keyHistogram, keyHistogram.localValue.asInstanceOf[Map[Any, Double]]))
+      new ShuffleWriteStatus(stageID, taskID, partitionID, keyHistogram))
   }
 
   def sendFinalHistogram(stageID: Int, taskID: Long, finalHistogram: DataCharacteristics[_]):

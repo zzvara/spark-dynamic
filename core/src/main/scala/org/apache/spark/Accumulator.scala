@@ -54,7 +54,7 @@ package org.apache.spark
 class Accumulator[T] private[spark] (
     // SI-8813: This must explicitly be a private val, or else scala 2.11 doesn't compile
     @transient private val initialValue: T,
-    param: AccumulatorParam[T],
+    override val param: AccumulatorParam[T],
     name: Option[String] = None,
     countFailedValues: Boolean = false)
   extends Accumulable[T, T](initialValue, param, name, countFailedValues)
@@ -144,6 +144,12 @@ object AccumulatorParam {
   private[spark] object ShuffleReadDataCharacteristicsAccumulatorParam
     extends DataCharacteristicsAccumulatorParam
 
+  private[spark] class ShuffleWriteDataCharacteristicsAccumulatorParam
+    extends DataCharacteristicsAccumulatorParam
+
+  private[spark] class ShuffleReadDataCharacteristicsAccumulatorParam
+    extends DataCharacteristicsAccumulatorParam
+
   /**
     * Accumulator parameter to record data characteristics in form of key-histograms.
     *
@@ -153,19 +159,19 @@ object AccumulatorParam {
     * distribution is close to uniform.
     */
   private[spark] class DataCharacteristicsAccumulatorParam
-    extends MapAccumulatorParam[Any, Double] {
-    @transient private val TAKE: Int = 4
-    @transient private val HISTOGRAM_SCALE_BOUNDARY: Double = 20
-    @transient private val BACKOFF_FACTOR: Double = 2.0
-    @transient private val DROP_BOUNDARY: Double = 0.01
-    @transient private val HISTOGRAM_SIZE_BOUNDARY: Int = 100
-    @transient private val HISTOGRAM_COMPACTION: Int = 60
+    extends MapAccumulatorParam[Any, Double] with Serializable {
+    private val TAKE: Int = 4
+    private val HISTOGRAM_SCALE_BOUNDARY: Double = 20
+    private val BACKOFF_FACTOR: Double = 2.0
+    private val DROP_BOUNDARY: Double = 0.01
+    private val HISTOGRAM_SIZE_BOUNDARY: Int = 100
+    private val HISTOGRAM_COMPACTION: Int = 60
     /**
       * Rate in which records are put into the histogram.
       * Value represent that each n-th input is recorded.
       */
     private var _sampleRate: Double = 1.0
-    def sampleRate = _sampleRate
+    def sampleRate: Double = _sampleRate
     /**
       * Size or width of the histogram, that is equal to the size of the map.
       */
@@ -175,10 +181,9 @@ object AccumulatorParam {
     private var _recordsPassed: Long = 0
     def recordsPassed: Long = _recordsPassed
 
-
     private var _version: Int = 0
     def version: Int = _version
-    def incrementVersion: Unit = { _version += 1 }
+    def incrementVersion(): Unit = { _version += 1 }
 
     def normalize(histogram: Map[Any, Double], normalizationParam: Long): Map[Any, Double] = {
       val normalizationFactor = normalizationParam * sampleRate
