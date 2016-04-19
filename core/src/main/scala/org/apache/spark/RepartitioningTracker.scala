@@ -520,10 +520,10 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
     stageData.get(stageID) match {
       case Some(sd) =>
         val scannedTasks = sd.scannedTasks
-        scannedTasks.get.foreach({ st =>
+        scannedTasks.foreach(_.foreach({ st =>
           st._2.scanner.stop()
           st._2.info.finishTracking()
-        })
+        }))
         sd.finishRepartitioning()
       case None =>
         logWarning(s"Attempt to stop scanners for non-registered stage of id $stageID." +
