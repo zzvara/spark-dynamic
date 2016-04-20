@@ -153,9 +153,10 @@ class Accumulable[R, T] private (
   /**
    * Create an [[AccumulableInfo]] representation of this [[Accumulable]] with the provided values.
    */
-  private[spark] def toInfo(update: Option[Any], value: Option[Any]): AccumulableInfo = {
+  private[spark] def toInfo(update: Option[Any], value: Option[Any],
+                            param: Option[AccumulableParam[_, _]] = None): AccumulableInfo = {
     val isInternal = name.exists(_.startsWith(InternalAccumulator.METRICS_PREFIX))
-    new AccumulableInfo(id, name, update, value, isInternal, countFailedValues)
+    new AccumulableInfo(id, name, update, value, isInternal, countFailedValues, param = param)
   }
 
   override def toString: String = if (newAcc._value == null) "null" else newAcc._value.toString

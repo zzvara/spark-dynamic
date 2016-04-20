@@ -58,21 +58,28 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
     val serializerInstance = dep.serializer.newInstance()
 
+    // Update the context task metrics for each record read.
+    val readMetrics = context.taskMetrics.registerTempShuffleReadMetrics()
+
     // Create a key/value iterator for each stream
     val recordIter = wrappedStreams.flatMap { wrappedStream =>
       // Note: the asKeyValueIterator below wraps a key/value iterator inside of a
       // NextIterator. The NextIterator makes sure that close() is called on the
       // underlying InputStream when all records have been read.
       serializerInstance.deserializeStream(wrappedStream).asKeyValueIterator
-    }
+    }.map(record => {
+      readMetrics.incRecordsRead(1)
+      record
+    })
 
     // Update the context task metrics for each record read.
     val readMetrics = context.taskMetrics.createTempShuffleReadMetrics()
     val metricIter = CompletionIterator[(Any, Any), Iterator[(Any, Any)]](
-      recordIter.map(record => {
-        readMetrics.incRecordsRead(1)
-        record
-      })),
+      if (SparkEnv.get.conf.getBoolean("spark.metrics.shuffleRead.dataCharacteristics", false)) {
+        readMetrics.recordIterator(recordIter)
+      } else {
+        recordIter
+      },
       context.taskMetrics.mergeShuffleReadMetrics())
 
     // An interruptible iterator must be used here in order to support task cancellation

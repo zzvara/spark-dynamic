@@ -19,9 +19,10 @@ package org.apache.spark.executor
 
 import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristics
-import org.apache.spark.{ColorfulLogging, Partitioner, Accumulator, InternalAccumulator}
+import org.apache.spark.{Accumulator, ColorfulLogging, InternalAccumulator, Partitioner}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.util.LongAccumulator
+import org.apache.spark.scheduler.AccumulableInfo
 
 
 /**
@@ -119,6 +120,7 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
 
 object ShuffleWriteMetrics {
   type DataCharacteristics[T] = Accumulator[Map[T, Double]]
+  type DataCharacteristicsInfo = AccumulableInfo
 }
 
 class RepartitioningInfo(

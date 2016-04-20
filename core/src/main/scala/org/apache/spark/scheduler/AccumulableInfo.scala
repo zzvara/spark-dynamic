@@ -17,6 +17,7 @@
 
 package org.apache.spark.scheduler
 
+import org.apache.spark.AccumulableParam
 import org.apache.spark.annotation.DeveloperApi
 
 
@@ -46,7 +47,8 @@ case class AccumulableInfo private[spark] (
     private[spark] val internal: Boolean,
     private[spark] val countFailedValues: Boolean,
     // TODO: use this to identify internal task metrics instead of encoding it in the name
-    private[spark] val metadata: Option[String] = None)
+    private[spark] val metadata: Option[String] = None,
+    private[spark] val param: Option[AccumulableParam[_, _]] = None)
 
 
 /**

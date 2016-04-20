@@ -19,11 +19,12 @@ package org.apache.spark
 
 import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark.executor.RepartitioningInfo
-import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristics
+import org.apache.spark.executor.ShuffleWriteMetrics.{DataCharacteristics, DataCharacteristicsInfo}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc._
 import org.apache.spark.scheduler._
 import org.apache.spark.util.{TaskCompletionListener, ThreadUtils}
+
 import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.util.hashing.MurmurHash3
@@ -41,12 +42,12 @@ private[spark] case class ShuffleWriteStatus[T: ClassTag](
   stageID: Int,
   taskID: Long,
   partitionID: Int,
-  keyHistogram: DataCharacteristics[T]) extends RepartitioningTrackerMessage
+  keyHistogram: DataCharacteristicsInfo) extends RepartitioningTrackerMessage
 
 private[spark] case class FinalHistogram[T](
   stageID: Int,
   taskID: Long,
-  finalHistogram: DataCharacteristics[T]) extends RepartitioningTrackerMessage
+  finalHistogram: DataCharacteristicsInfo) extends RepartitioningTrackerMessage
 
 /**
   * Registering message sent from workers.
@@ -149,7 +150,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
     * `spark.repartitioning.final-histgorams`. Default value is false.
     */
   private val finalHistograms =
-    mutable.HashMap[Int, mutable.HashMap[Long, DataCharacteristics[Any]]]()
+    mutable.HashMap[Int, mutable.HashMap[Long, DataCharacteristicsInfo]]()
 
   var doneRepartitioning = false
 
@@ -211,16 +212,17 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
         * belongs to.
         */
       case ShuffleWriteStatus(stageID, taskID, partitionID,
-                              keyHistogram: DataCharacteristics[Any]) =>
+                              keyHistogram: DataCharacteristicsInfo) =>
         logInfo(s"Received ShuffleWriteStatus message for " +
           s"stage $stageID and task $taskID", "DRCommunication")
         _stageData.get(stageID) match {
           case Some(stageData) =>
             logInfo(s"Received key histogram for stage $stageID" +
-              s" task $taskID (with size ${keyHistogram.localValue.size}).",
+              s" task $taskID (with size ${keyHistogram.value.size}).",
               "DRCommunication", "DRHistogram")
             logInfo(s"Histogram content is:", "DRHistogram")
-            logInfo(keyHistogram.localValue.map(_.toString).mkString("\n"), "DRHistogram")
+            logInfo(keyHistogram.update.get.asInstanceOf[Map[Any, Double]]
+                    .map(_.toString).mkString("\n"), "DRHistogram")
             stageData.strategy.onHistogramArrival(partitionID, keyHistogram)
             context.reply(true)
           case None =>
@@ -243,7 +245,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
               case None => stageFinalHistograms.update(taskID, finalHistogram)
             }
           case None =>
-            val map = mutable.HashMap[Long, DataCharacteristics[Any]]()
+            val map = mutable.HashMap[Long, DataCharacteristicsInfo]()
             map.update(taskID, finalHistogram)
             finalHistograms.update(stageID, map)
         }
@@ -297,8 +299,8 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
       if (_stageData.contains(stageID)) {
         if (taskEnd.reason == Success) {
           // Currently we disable repartitioning for a stage, if any of its tasks finish.
-          logInfo(s"A task completion detected for stage $stageID." +
-            s"Clearing tracking.", "DRCommunication")
+          logInfo(s"A task completion detected for stage $stageID. " +
+                  s"Clearing tracking.", "DRCommunication")
           if(!doneRepartitioning) {
             shutDownScanners(stageID)
             if (_stageData(stageID).mode == RepartitioningModes.ONLY_ONCE) {
@@ -306,10 +308,11 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
             }
           }
         } else {
-          logWarning(s"Detected completion of a failed task for stage:$stageID!", "DRCommunication")
+          logWarning(s"Detected completion of a failed task for stage $stageID!", "DRCommunication")
         }
       } else {
-        logWarning(s"Invalid stage of id $stageID detected on task completion!", "DRCommunication")
+        logWarning(s"Invalid stage of id $stageID detected on task completion! " +
+                   s"Maybe not tracked intentionally?", "DRCommunication")
       }
     }
   }
@@ -415,10 +418,10 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
     */
   def sendHistogram(stageID: Int, taskID: Long,
                     partitionID: Int,
-                    keyHistogram: DataCharacteristics[_]): Unit = {
-    logInfo(s"Sending histogram (with size ${keyHistogram.localValue.size})" +
+                    keyHistogram: DataCharacteristicsInfo): Unit = {
+    logInfo(s"Sending histogram (with size ${keyHistogram.value.size})" +
             s" (records passed is ${
-              keyHistogram.getParam.asInstanceOf[DataCharacteristicsAccumulatorParam]
+              keyHistogram.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam]
                 .recordsPassed
             }) " +
             s"to driver for stage $stageID task $taskID",
@@ -427,7 +430,7 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
       new ShuffleWriteStatus(stageID, taskID, partitionID, keyHistogram))
   }
 
-  def sendFinalHistogram(stageID: Int, taskID: Long, finalHistogram: DataCharacteristics[_]):
+  def sendFinalHistogram(stageID: Int, taskID: Long, finalHistogram: DataCharacteristicsInfo):
   Unit = {
     logInfo(s"Sending final histogram to driver for stage $stageID task $taskID.",
             "DRCommunication", "DRHistogram")
@@ -606,8 +609,12 @@ class Throughput() extends Scanner {
     while (isRunning) {
       taskContext.taskMetrics().shuffleWriteMetrics match {
         case Some(shuffleWriteMetrics) =>
-          val histogramValue = shuffleWriteMetrics.dataCharacteristics
-          val histogramMeta = histogramValue.getParam
+          val histogramValue = shuffleWriteMetrics.dataCharacteristics.toInfo(
+            Some(shuffleWriteMetrics.dataCharacteristics.localValue),
+            None,
+            Some(shuffleWriteMetrics.dataCharacteristics.getParam)
+          )
+          val histogramMeta = shuffleWriteMetrics.dataCharacteristics.getParam
             .asInstanceOf[DataCharacteristicsAccumulatorParam]
           val recordBound =
             SparkEnv.get.conf.getInt("spark.repartitioning.throughput.record-bound", 100)
@@ -644,10 +651,8 @@ class Throughput() extends Scanner {
   */
 abstract class Decider(stageID: Int, numberOfTasks: Int) {
   def onHistogramArrival(partitionID: Int,
-                         keyHistogram: DataCharacteristics[Any]): Unit
-
+                         keyHistogram: DataCharacteristicsInfo): Unit
   protected def decide(): Boolean
-
   protected def repartition(globalHistogram: Seq[(Any, Double)]): Unit
 }
 
@@ -661,7 +666,7 @@ class Strategy(stageID: Int,
 
   private val numPartitions = partitioner.numPartitions
   var repartitionCount = 0
-  private val histograms = mutable.HashMap[Int, DataCharacteristics[Any]]()
+  private val histograms = mutable.HashMap[Int, DataCharacteristicsInfo]()
   private var minScale = 1.0d
   private val broadcastHistory = mutable.ArrayBuffer[Partitioner]()
   private var currentVersion = 0
@@ -689,9 +694,9 @@ class Strategy(stageID: Int,
     * for this particular job's strategy.
     */
   override def onHistogramArrival(partitionID: Int,
-                                  keyHistogram: DataCharacteristics[Any]): Unit = {
+                                  keyHistogram: DataCharacteristicsInfo): Unit = {
     this.synchronized {
-      val histogramMeta = keyHistogram.getParam.asInstanceOf[DataCharacteristicsAccumulatorParam]
+      val histogramMeta = keyHistogram.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam]
       if (histogramMeta.version == currentVersion) {
         logInfo(s"Recording histogram arrival for partition $partitionID.",
                 "DRCommunication", "DRHistogram")
@@ -735,11 +740,11 @@ class Strategy(stageID: Int,
       logInfo(s"Number of received histograms: ${histograms.size}", "strongCyan")
       val numRecords =
         histograms.values.map(
-          _.getParam.asInstanceOf[DataCharacteristicsAccumulatorParam].recordsPassed).sum
+          _.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam].recordsPassed).sum
 
       val globalHistogram =
-        histograms.values.map(h => h.getParam.asInstanceOf[DataCharacteristicsAccumulatorParam]
-          .normalize(h.localValue, numRecords))
+        histograms.values.map(h => h.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam]
+          .normalize(h.update.get.asInstanceOf[Map[Any, Double]], numRecords))
           .reduce(DataCharacteristicsAccumulatorParam.merge[Any, Double](0.0)(
             (a: Double, b: Double) => a + b)
           )
