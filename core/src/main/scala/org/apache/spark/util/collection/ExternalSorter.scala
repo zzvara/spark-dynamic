@@ -217,8 +217,8 @@ private[spark] class ExternalSorter[K, V, C](
   updateCurrentVersion()
 
   def insertAll(records: Iterator[Product2[K, V]]): Unit = {
-    logInfo(s"Started execution of $taskInfo with" +
-            s"partitioner $partitioner, records.hasNext = ${records.hasNext}",
+    logInfo(s"Started execution of $taskInfo with " +
+            s"partitioner $partitioner, records.hasNext = ${records.hasNext}.",
             "DRRepartitioning", "DRDebug")
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
