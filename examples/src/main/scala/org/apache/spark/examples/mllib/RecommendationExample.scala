@@ -31,9 +31,10 @@ object RecommendationExample {
     val sc = new SparkContext(conf)
     // $example on$
     // Load and parse the data
-    val data = sc.textFile("data/mllib/als/test.data")
-    val ratings = data.map(_.split(',') match { case Array(user, item, rate) =>
-      Rating(user.toInt, item.toInt, rate.toDouble)
+    val data = sc.textFile(args(0))
+    val ratings = data.map(_.split(';') match { case Array(user, item, rate) =>
+      Rating(user.replaceAll("\"", "").toInt, item.replaceAll("\"", "").hashCode,
+        rate.replaceAll("\"", "").toDouble)
     })
 
     // Build the recommendation model using ALS
@@ -62,6 +63,8 @@ object RecommendationExample {
     model.save(sc, "target/tmp/myCollaborativeFilter")
     val sameModel = MatrixFactorizationModel.load(sc, "target/tmp/myCollaborativeFilter")
     // $example off$
+
+    Thread.sleep(60 * 60 * 1000)
   }
 }
 // scalastyle:on println

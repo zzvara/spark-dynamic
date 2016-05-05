@@ -231,10 +231,6 @@ private[spark] class DiskBlockObjectWriter(
       open()
     }
 
-//    if (recordCharacteristics) {
-//      writeMetrics.addKeyWritten(key)
-//    }
-
     objOut.writeKey(key)
     objOut.writeValue(value)
     recordWritten()

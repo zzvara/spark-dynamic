@@ -59,18 +59,16 @@ private[spark] abstract class Spillable[C](taskMemoryManager: TaskMemoryManager)
 
   // Threshold for this collection's size in bytes before we start tracking its memory usage
   // To avoid a large number of small spills, initialize this to a value orders of magnitude > 0
-  var myMemoryThreshold = initialMemoryThreshold
+  private[this] var myMemoryThreshold = initialMemoryThreshold
 
   // Number of elements read from input since last spill
   var _elementsRead = 0L
 
   // Number of bytes spilled in total
-  var _memoryBytesSpilled = 0L
+  private[this] var _memoryBytesSpilled = 0L
 
   // Number of spills
-  var _spillCount = 0
-
-  protected var spillTreshold = 1000
+  private[this] var _spillCount = 0
 
   /**
    * Spills the current in-memory collection to disk if needed. Attempts to acquire more
@@ -91,15 +89,11 @@ private[spark] abstract class Spillable[C](taskMemoryManager: TaskMemoryManager)
       // or we already had more memory than myMemoryThreshold), spill the current collection
       shouldSpill = currentMemory >= myMemoryThreshold
     }
-    if (elementsRead % spillTreshold == 0 && collection.isInstanceOf[PartitionedPairBuffer[_, _]]) {
-      spillTreshold = spillTreshold + 1000
-      shouldSpill = true
-    }
     shouldSpill = shouldSpill || _elementsRead > numElementsForceSpillThreshold
     // Actually spill
     if (shouldSpill) {
       _spillCount += 1
-//      logSpillage(currentMemory)
+      logSpillage(currentMemory)
       spill(collection)
       _elementsRead = 0
       _memoryBytesSpilled += currentMemory
@@ -146,7 +140,7 @@ private[spark] abstract class Spillable[C](taskMemoryManager: TaskMemoryManager)
    *
    * @param size number of bytes spilled
    */
-  @inline def logSpillage(size: Long) {
+  @inline private def logSpillage(size: Long) {
     val threadId = Thread.currentThread().getId
     logInfo("Thread %d spilling in-memory map of %s to disk (%d time%s so far)"
       .format(threadId, org.apache.spark.util.Utils.bytesToString(size),

@@ -23,14 +23,15 @@ object Music {
     constructor: (Int, Int, Map[String, Any], Option[Map[String, Any]]) => T,
     dropProbability: Double = 0.0)(implicit context: SparkContext): RDD[T] = {
     context
-      .textFile(fileName, 38)
+      .textFile(fileName, 35)
       // .filter(x => drop(probability = dropProbability))
       .map(_.split("\t").drop(1))
       .flatMap(a => {
         Idomaar.parse(a) match {
           case Some((id: Int, created, properties, linked)) =>
             List(constructor(id, created, properties, linked))
-          case None => List.empty
+          case None =>
+            List.empty
         }
       })
   }
@@ -48,6 +49,14 @@ object Music {
 
     val tracks =
       loadData(args(0), Track.apply)
+        .cache()
+        .mapPartitionsWithIndex {
+          (index, iter) => {
+            val seq = iter.toSeq
+            println(s"Size of partition $index before filter is ${seq.size}.")
+            seq.toIterator
+          }
+        }
 
     val tags =
       loadData(args(1), Tag.apply)
@@ -77,14 +86,17 @@ object Music {
                 .map(_.asInstanceOf[Double].toInt)
                 .map(ID => (ID, "track payload"))
             } else {
-              Iterator.empty
+              List.empty
             }
           }
         }
-    tagsWithTracks
-      .groupByKey()
-      .map(x => x)
-      .count()
+
+      tagsWithTracks
+        .repartition(38)
+        .groupByKey()
+        .map(x => x)
+        .count()
+
     /*
         .mapPartitionsWithIndex((x,y) => y.map(z => (z._1, x)))
         .distinct()

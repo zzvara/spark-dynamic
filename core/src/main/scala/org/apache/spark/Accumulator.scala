@@ -242,6 +242,7 @@ object AccumulatorParam {
   }
 
   private[spark] object DataCharacteristicsAccumulatorParam {
+
     def merge[A, B](zero: B)(f: (B, B) => B)(s1: Map[A, B], s2: Map[A, B]): Map[A, B] = {
       s1 ++ s2.map{ case (k, v) => k -> f(v, s1.getOrElse(k, zero)) }
     }
