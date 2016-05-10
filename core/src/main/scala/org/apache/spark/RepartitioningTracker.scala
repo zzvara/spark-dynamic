@@ -220,8 +220,8 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
             logInfo(s"Received key histogram for stage $stageID" +
               s" task $taskID (with size ${keyHistogram.value.size}).",
               "DRCommunication", "DRHistogram")
-            logInfo(s"Histogram content is:", "DRHistogram")
-            logInfo(keyHistogram.update.get.asInstanceOf[Map[Any, Double]]
+            logDebug(s"Histogram content is:", "DRHistogram")
+            logDebug(keyHistogram.update.get.asInstanceOf[Map[Any, Double]]
                     .map(_.toString).mkString("\n"), "DRHistogram")
             stageData.strategy.onHistogramArrival(partitionID, keyHistogram)
             context.reply(true)

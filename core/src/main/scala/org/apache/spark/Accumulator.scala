@@ -159,13 +159,19 @@ object AccumulatorParam {
     * distribution is close to uniform.
     */
   private[spark] class DataCharacteristicsAccumulatorParam
-    extends MapAccumulatorParam[Any, Double] with Serializable {
-    private val TAKE: Int = 4
-    private val HISTOGRAM_SCALE_BOUNDARY: Double = 20
-    private val BACKOFF_FACTOR: Double = 2.0
-    private val DROP_BOUNDARY: Double = 0.01
-    private val HISTOGRAM_SIZE_BOUNDARY: Int = 100
-    private val HISTOGRAM_COMPACTION: Int = 60
+    extends MapAccumulatorParam[Any, Double] with Serializable with Logging {
+    private val TAKE: Int =
+      SparkEnv.get.conf.getInt("spark.data-characteristics.take", 4)
+    private val HISTOGRAM_SCALE_BOUNDARY: Double =
+      SparkEnv.get.conf.getInt("spark.data-characteristics.histogram-scale-boundary", 20)
+    private val BACKOFF_FACTOR: Double =
+      SparkEnv.get.conf.getDouble("spark.data-characteristics.backoff-factor", 2.0)
+    private val DROP_BOUNDARY: Double =
+      SparkEnv.get.conf.getDouble("spark.data-characteristics.drop-boundary", 0.001)
+    private val HISTOGRAM_SIZE_BOUNDARY: Int =
+      SparkEnv.get.conf.getInt("spark.data-characteristics.histogram-size-boundary", 100)
+    private val HISTOGRAM_COMPACTION: Int =
+      SparkEnv.get.conf.getInt("spark.data-characteristics.histogram-compaction", 60)
     /**
       * Rate in which records are put into the histogram.
       * Value represent that each n-th input is recorded.
@@ -242,7 +248,6 @@ object AccumulatorParam {
   }
 
   private[spark] object DataCharacteristicsAccumulatorParam {
-
     def merge[A, B](zero: B)(f: (B, B) => B)(s1: Map[A, B], s2: Map[A, B]): Map[A, B] = {
       s1 ++ s2.map{ case (k, v) => k -> f(v, s1.getOrElse(k, zero)) }
     }
