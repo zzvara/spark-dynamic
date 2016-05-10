@@ -19,9 +19,10 @@ package org.apache.spark.executor
 
 import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristics
-import org.apache.spark.{Accumulator, ColorfulLogging, InternalAccumulator, Partitioner}
+import org.apache.spark.{Accumulator, InternalAccumulator, Partitioner}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.util.LongAccumulator
+import org.apache.spark.internal.ColorfulLogging
 import org.apache.spark.scheduler.AccumulableInfo
 
 

@@ -19,8 +19,8 @@ package org.apache.spark
 
 import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark.executor.RepartitioningInfo
-import org.apache.spark.executor.ShuffleWriteMetrics.{DataCharacteristics, DataCharacteristicsInfo}
-import org.apache.spark.internal.Logging
+import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristicsInfo
+import org.apache.spark.internal.{ColorfulLogging, Logging}
 import org.apache.spark.rpc._
 import org.apache.spark.scheduler._
 import org.apache.spark.util.{TaskCompletionListener, ThreadUtils}
@@ -671,7 +671,7 @@ class Strategy(stageID: Int,
   private val broadcastHistory = mutable.ArrayBuffer[Partitioner]()
   private var currentVersion = 0
   private val treeDepthHint =
-    SparkEnv.get.conf.getDouble("spark.repartitioning.partitioner-tree-depth", 3)
+    SparkEnv.get.conf.getInt("spark.repartitioning.partitioner-tree-depth", 3)
   private val sCutHint = 0
   private val pCutHint = Math.pow(2, treeDepthHint - 1).toInt
 
@@ -758,7 +758,7 @@ class Strategy(stageID: Int,
   }
 
   override protected def repartition(globalHistogram: Seq[(Any, Double)]): Unit = {
-//    val height = globalHistogram.map(_._2).sum
+    //    val height = globalHistogram.map(_._2).sum
     val sortedNormedHistogram = globalHistogram.take(numPartitions)
 
     logInfo(
@@ -767,24 +767,23 @@ class Strategy(stageID: Int,
           s"step $repartitionCount:\n")((x, y) =>
         x + s"\t${y._1}\t->\t${y._2}\n"), "DRHistogram", "DRRepartitioner")
 
-    var highestValues = sortedNormedHistogram.map(_._2).toArray
-    var heaviestKeys = sortedNormedHistogram.map(_._1).toArray
+    val sortedValues = sortedNormedHistogram.map(_._2).toArray
+    val sortedKeys = sortedNormedHistogram.map(_._1).toArray
 
-//    cut = Math.min(cut, highestValues.length)
-    val partitioningInfo = getPartitioningInfo(highestValues)
-
-    highestValues = highestValues.take(partitioningInfo.cut)
-    heaviestKeys = heaviestKeys.take(partitioningInfo.cut)
+    //    cut = Math.min(cut, highestValues.length)
+    val partitioningInfo = PartitioningInfo.newInstance(sortedValues, numPartitions, treeDepthHint)
 
     val repartitioner = new KeyIsolationPartitioner(
       partitioningInfo,
-      heaviestKeys,
-      getWeightedHashPartitioner(highestValues, partitioningInfo)
+      sortedKeys,
+      WeightedHashPartitioner.newInstance(sortedValues, partitioningInfo, (key: Any) =>
+        (MurmurHash3.stringHash((key.hashCode + 123456791).toString).toDouble
+          / Int.MaxValue + 1) / 2)
     )
 
     logDebug("Partitioner created, simulating run with global histogram.")
     logDebug(sortedNormedHistogram.toString())
-    heaviestKeys.foreach {
+    sortedKeys.foreach {
       key => logInfo(s"Key $key went to ${repartitioner.getPartition(key)}.")
     }
 
@@ -802,55 +801,7 @@ class Strategy(stageID: Int,
     histograms.clear()
     logInfo(s"Version of histograms pushed up for stage $stageID", "DRHistogram")
   }
-
-  def getPartitioningInfo(highestValues: Array[Double]): PartitioningInfo = {
-    var remainder = 1.0d
-    var level = 1.0d / numPartitions
-    val startingCut = Math.min(numPartitions, highestValues.length)
-    var calculatedSCut = 0
-
-    // val currentCut = numPartitions // Math.min(cutHint, highestValues.length)
-
-    def countLevel(i: Int): Unit = {
-      if (i < startingCut && level <= highestValues(i)) {
-        remainder -= highestValues(i)
-        if (i < numPartitions - 1) level = remainder / (numPartitions - 1 - i) else level = 0.0d
-        calculatedSCut += 1
-        countLevel(i + 1)
-      }
-    }
-    countLevel(0)
-
-    val actualSCut = Math.max(sCutHint, calculatedSCut)
-    val actualPCut = Math.min(pCutHint, startingCut - actualSCut)
-    level = (1.0d - highestValues.take(actualSCut).sum) / (numPartitions - actualSCut)
-    val actualCut = actualSCut + actualPCut
-
-    logInfo(s"Repartitioning parameters: numPartitions=$numPartitions, cut=$actualCut," +
-      s"sCut=$actualSCut, pCut=$actualPCut, level=$level," +
-      s"block=${(numPartitions - actualCut) * level}, maxKey=${highestValues.headOption}",
-      "DRRepartitioner")
-
-    new PartitioningInfo(numPartitions, actualCut, actualSCut, level)
-  }
-
-  def getWeightedHashPartitioner(highestValues: Array[Double],
-                                 partitioningInfo: PartitioningInfo):
-  WeightedHashPartitioner = {
-    val cut = partitioningInfo.cut
-    val sCut = partitioningInfo.sCut
-    val level = partitioningInfo.level
-
-    new WeightedHashPartitioner(
-      Array.tabulate[Double]
-        (cut - sCut)
-        (i => level - highestValues(cut - i - 1)), partitioningInfo, (key: Any) =>
-        (MurmurHash3.stringHash((key.hashCode + 123456791).toString).toDouble
-          / Int.MaxValue + 1) / 2)
-  }
 }
 
 class Worker(val executorID: String,
              val reference: RpcEndpointRef)
-
-case class PartitioningInfo(partitions: Int, cut: Int, sCut: Int, level: Double)

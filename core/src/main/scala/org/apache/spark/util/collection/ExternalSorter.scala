@@ -24,12 +24,10 @@ import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-
 import com.google.common.io.ByteStreams
-
 import org.apache.spark._
 import org.apache.spark.executor.{RepartitioningInfo, ShuffleWriteMetrics}
-import org.apache.spark.internal.Logging
+import org.apache.spark.internal.{ColorfulLogging, Logging}
 import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.serializer._
 import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter}
@@ -219,7 +217,7 @@ private[spark] class ExternalSorter[K, V, C](
   def insertAll(records: Iterator[Product2[K, V]]): Unit = {
     logInfo(s"Started execution of $taskInfo with " +
             s"partitioner $partitioner, records.hasNext = ${records.hasNext}.",
-            "DRRepartitioning", "DRDebug")
+            "DRRepartitioning", "DRRepartitioning")
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
     val shuffleWriteMetrics = context.taskMetrics().shuffleWriteMetrics
@@ -751,6 +749,7 @@ private[spark] class ExternalSorter[K, V, C](
       }
     } else {
       // Merge spilled and in-memory data
+      val partitionsSeen = List[Int]()
       merge(spills, destructiveIterator(
         collection.partitionedDestructiveSortedIterator(comparator)))
     }
@@ -803,6 +802,9 @@ private[spark] class ExternalSorter[K, V, C](
           lengths(id) = segment.length
         }
       }
+      // logInfo(s"### partitions seen at task-${context.taskAttemptId()}:
+      // ${lengths.zipWithIndex.filter(x => x._1 != 0).map(_._2).mkString("[", ", ", "]")}",
+      // "strongBlue")
     }
 
     writer.close()

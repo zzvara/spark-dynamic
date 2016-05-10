@@ -15,14 +15,13 @@
  * limitations under the License.
  */
 
-package org.apache.spark
+package org.apache.spark.internal
 
-import java.io.{FileNotFoundException, FileInputStream}
+import java.io.{FileInputStream, FileNotFoundException}
 import java.util.Properties
 import javax.lang.model.SourceVersion
 
-import org.apache.spark.ColorfulLogging._
-import org.apache.spark.internal.Logging
+import org.apache.spark.internal.ColorfulLogging._
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.mutable
@@ -75,6 +74,7 @@ trait ColorfulLogging extends Logging {
     } else {
       var logg = getLogger(color)
       if (logg == null) {
+        initializeLogIfNecessary(false)
         logg = updateLogger(color, LoggerFactory.getLogger(logName(color)))
       }
       logg
@@ -263,10 +263,11 @@ trait ColorfulLogging extends Logging {
   }
 }
 
-object ColorfulLogging {
+
+object ColorfulLogging extends Logging {
+
   private val ROOT = "root"
-  private val propertiesPath =
-    "conf/colorful-logging.properties"
+  private val propertiesPath = "conf/colorful-logging.properties"
   private val properties = getProperties
 
   private val isColorfulLoggingOn = properties.getProperty("isColorfulLoggingOn", "false").toBoolean
@@ -284,6 +285,7 @@ object ColorfulLogging {
       parseTracksForColor(color)
     }
     parseTracksForRoot()
+    logInfo(s"Track-color assignment: $tracksToColors")
   }
 
   private def parseSuppressedColors(): Unit = {
@@ -337,6 +339,7 @@ object ColorfulLogging {
       val s = properties.getProperty(ROOT, "")
       if (s.nonEmpty) {
         s.split(",").toSet[String].map(_.trim).foreach { (x: String) =>
+          if (x.isEmpty) throw new RuntimeException(s"Empty trace name is invalid for root")
           if (!SourceVersion.isName(x) || colorsAndRoot.contains(x)) {
             throw new RuntimeException(s"'$x' is not a valid track name for color root")
           }
@@ -356,7 +359,8 @@ object ColorfulLogging {
       properties.load(in)
       in.close()
     } catch {
-      case t: FileNotFoundException => ()
+      case t: FileNotFoundException =>
+        logWarning("Could not load colorful logging properties file.")
     }
     properties
   }

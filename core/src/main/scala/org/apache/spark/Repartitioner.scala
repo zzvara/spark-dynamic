@@ -17,49 +17,82 @@
 
 package org.apache.spark
 
-import org.apache.spark.util.Utils
+case class PartitioningInfo(partitions: Int, cut: Int, sCut: Int, level: Double)
+
+object PartitioningInfo {
+
+  def newInstance(sortedValues: Array[Double], numPartitions: Int,
+    treeDepthHint: Int, sCutHint: Int = 0): PartitioningInfo = {
+    val pCutHint = Math.pow(2, treeDepthHint - 1).toInt
+    val startingCut = Math.min(numPartitions, sortedValues.length)
+    var computedSCut = 0
+
+    def computeCuts(i: Int): Unit = {
+      var remainder = 1.0d
+      var computedLevel = 1.0d / numPartitions
+      if (i < startingCut && computedLevel <= sortedValues(i)) {
+        remainder -= sortedValues(i)
+        if (i < numPartitions - 1) computedLevel = remainder / (numPartitions - 1 - i) else computedLevel = 0.0d
+        computedSCut += 1
+        computeCuts(i + 1)
+      }
+    }
+    computeCuts(0)
+
+    val actualSCut = Math.max(sCutHint, computedSCut)
+    val actualPCut = Math.min(pCutHint, startingCut - actualSCut)
+    val level = Math.max(0, (1.0d - sortedValues.take(actualSCut).sum) / (numPartitions - actualSCut))
+    val actualCut = actualSCut + actualPCut
+
+    println(s"Repartitioning parameters: numPartitions=$numPartitions, cut=$actualCut, " +
+      s"sCut=$actualSCut, pCut=$actualPCut, level=$level, " +
+      s"block=${(numPartitions - actualCut) * level}, maxKey=${sortedValues.headOption}")
+
+    new PartitioningInfo(numPartitions, actualCut, actualSCut, level)
+  }
+}
 
 abstract class Repartitioner(val parent: Partitioner) extends Partitioner {
   def getPartition(key: Any, oldPartition: Int): Int
 }
 
-class KHeaviestPartitioner(override val parent: Partitioner,
-                           val k: Int,
-                           val kLargest: Array[Int],
-                           val kSmallest: Array[Int])
-extends Repartitioner(parent) with ColorfulLogging {
-  val largestToSmallest = (0 until k).map(i => (kLargest(i), kSmallest(i))).toMap
-  val smallestToLargest = largestToSmallest.map(_.swap)
+//class KHeaviestPartitioner(override val parent: Partitioner,
+//                           val k: Int,
+//                           val kLargest: Array[Int],
+//                           val kSmallest: Array[Int])
+//extends Repartitioner(parent) with ColorfulLogging {
+//  val largestToSmallest = (0 until k).map(i => (kLargest(i), kSmallest(i))).toMap
+//  val smallestToLargest = largestToSmallest.map(_.swap)
+//
+//  logInfo(s"Created with ($k, largest: (${kLargest.mkString(", ")})," +
+//    s"smallest: (${kSmallest.mkString(", ")}))", "DRRepartitioner")
+//
+//  override def numPartitions: Int = parent.numPartitions
+//
+//  override def getPartition(key: Any): Int = {
+//    val oldPartition = parent.getPartition(key)
+//    getPartition(key, oldPartition)
+//  }
+//
+//  override def getPartition(key: Any, oldPartition: Int): Int = {
+//    if (largestToSmallest.keySet.contains(oldPartition) &&
+//      Utils.nonNegativeMod(key.hashCode(), numPartitions * 2) >= numPartitions) {
+//      largestToSmallest(oldPartition)
+//    } else if (smallestToLargest.keySet.contains(oldPartition) &&
+//      Utils.nonNegativeMod(key.hashCode(), numPartitions * 2) < numPartitions) {
+//      smallestToLargest(oldPartition)
+//    } else {
+//      oldPartition
+//    }
+//  }
+//}
 
-  logInfo(s"Created with ($k, largest: (${kLargest.mkString(", ")})," +
-    s"smallest: (${kSmallest.mkString(", ")}))", "DRRepartitioner")
+class KeyIsolationPartitioner(
+  partitioningInfo: PartitioningInfo,
+  sortedKeys: Array[Any],
+  weightedHashPartitioner: WeightedHashPartitioner) extends Partitioner {
 
-  override def numPartitions: Int = parent.numPartitions
-
-  override def getPartition(key: Any): Int = {
-    val oldPartition = parent.getPartition(key)
-    getPartition(key, oldPartition)
-  }
-
-  override def getPartition(key: Any, oldPartition: Int): Int = {
-    if (largestToSmallest.keySet.contains(oldPartition) &&
-      Utils.nonNegativeMod(key.hashCode(), numPartitions * 2) >= numPartitions) {
-      largestToSmallest(oldPartition)
-    } else if (smallestToLargest.keySet.contains(oldPartition) &&
-      Utils.nonNegativeMod(key.hashCode(), numPartitions * 2) < numPartitions) {
-      smallestToLargest(oldPartition)
-    } else {
-      oldPartition
-    }
-  }
-}
-
-class KeyIsolationPartitioner(val partitioningInfo: PartitioningInfo,
-                              val heaviestKeys: Array[Any],
-                              val weightedHashPartitioner: WeightedHashPartitioner)
-extends Partitioner {
-
-  assert(heaviestKeys.length == partitioningInfo.cut)
+  val heaviestKeys = sortedKeys.take(partitioningInfo.cut)
   private val heavyKeysMap = Map[Any, Int]() ++ heaviestKeys.zipWithIndex
 
   override def numPartitions: Int = partitioningInfo.partitions
@@ -74,10 +107,10 @@ extends Partitioner {
   }
 }
 
-class WeightedHashPartitioner(weights: Array[Double],
-                              partitioningInfo: PartitioningInfo,
-                              hash: Any => Double)
-  extends Partitioner {
+class WeightedHashPartitioner(
+  weights: Array[Double],
+  partitioningInfo: PartitioningInfo,
+  hash: Any => Double) extends Partitioner {
   private val partitions = partitioningInfo.partitions
   private val cut = partitioningInfo.cut
   private val sCut = partitioningInfo.sCut
@@ -105,6 +138,20 @@ class WeightedHashPartitioner(weights: Array[Double],
       BinarySearch.binarySearch(aggregated, searchKey - block) + partitions - cut
     }
     bucket
+  }
+}
+
+object WeightedHashPartitioner {
+
+  def newInstance(sortedValues: Array[Double], partitioningInfo: PartitioningInfo,
+    hash: Any => Double): WeightedHashPartitioner = {
+    val cut = partitioningInfo.cut
+
+    new WeightedHashPartitioner(
+      Array.tabulate[Double](cut - partitioningInfo.sCut)
+        (i => partitioningInfo.level - sortedValues.take(cut)(cut - i - 1)),
+      partitioningInfo,
+      hash)
   }
 }
 
