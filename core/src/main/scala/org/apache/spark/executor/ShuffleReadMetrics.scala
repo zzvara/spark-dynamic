@@ -68,7 +68,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   }
 
   private[spark] def addBlockFetch(blockResult: BlockResult) : Unit = {
-    logInfo(s"Recording shuffle block result ${blockResult.blockId}.")
+    logDebug(s"Recording shuffle block result ${blockResult.blockId}.")
     blockResult.loc match {
       case Some(loc) =>
         _remoteBlockFetchInfos.add(
@@ -84,7 +84,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   }
 
   private[spark] def addBlockFetch(blockFetchInfo: BlockFetchInfo) : Unit = {
-    logInfo(s"Recording shuffle block fetch ${blockFetchInfo.blockId}.")
+    logDebug(s"Recording shuffle block fetch ${blockFetchInfo.blockId}.")
     blockFetchInfo.host match {
       case Some(host) => _remoteBlockFetchInfos.add(mutable.Seq(blockFetchInfo))
       case _ => _localBlockFetchInfos.add(mutable.Seq(blockFetchInfo))

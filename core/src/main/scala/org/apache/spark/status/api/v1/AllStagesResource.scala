@@ -293,6 +293,7 @@ private[v1] object AllStagesResource {
       bytesWritten = internal.bytesWritten,
       writeTime = internal.writeTime,
       repartitioningTime = internal.repartitioningTime,
+      insertionTime = internal.insertionTime,
       recordsWritten = internal.recordsWritten,
       dataCharacteristics = internal.dataCharacteristics.localValue
     )

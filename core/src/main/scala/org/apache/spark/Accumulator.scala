@@ -196,16 +196,20 @@ object AccumulatorParam {
       histogram.mapValues(_ / normalizationFactor)
     }
 
+    def increase(pair: Product2[Any, Any]): Double = _sampleRate
+
     override def addAccumulator(r: Map[Any, Double], t: Map[Any, Double]): Map[Any, Double] = {
-      val key = t.toList.head._1
+      val pair = t.toList.head._1.asInstanceOf[Product2[Any, Any]]
       _recordsPassed += 1
       if (Math.random() <= _sampleRate) { // Decided to record the key.
-        val updatedHistogram = r + ((key,
-          r.get(key) match {
-            case Some(value) => value + 1.0
-            case None =>
-              _width = _width + 1
-              _sampleRate
+        val updatedHistogram = r + ((pair._1, {
+            val newValue = r.get(pair._1) match {
+              case Some(value) => value + increase(pair)
+              case None =>
+                _width = _width + 1
+                increase(pair)
+            }
+            newValue
           }
         ))
         // Decide if scaling is needed.
@@ -214,7 +218,7 @@ object AccumulatorParam {
           val scaledHistogram =
             updatedHistogram
               .mapValues(x => x / BACKOFF_FACTOR)
-              .filter(pair => pair._2 > DROP_BOUNDARY)
+              .filter(p => p._2 > DROP_BOUNDARY)
           // Decide if additional cut is needed.
           if (_width > HISTOGRAM_SIZE_BOUNDARY) {
             _width = HISTOGRAM_COMPACTION
@@ -251,5 +255,14 @@ object AccumulatorParam {
     def merge[A, B](zero: B)(f: (B, B) => B)(s1: Map[A, B], s2: Map[A, B]): Map[A, B] = {
       s1 ++ s2.map{ case (k, v) => k -> f(v, s1.getOrElse(k, zero)) }
     }
+    def isWeightable[T]()(implicit mf: ClassTag[T]): Boolean =
+      classOf[Weightable] isAssignableFrom mf.runtimeClass
+
+    def className[T]()(implicit mf: ClassTag[T]): String =
+      mf.runtimeClass.getCanonicalName
+  }
+
+  abstract class Weightable {
+    def complexity(): Int
   }
 }

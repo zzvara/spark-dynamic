@@ -20,7 +20,7 @@ package org.apache.spark.util.collection
 import java.io._
 import java.util.Comparator
 
-import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
+import org.apache.spark.AccumulatorParam.{Weightable, DataCharacteristicsAccumulatorParam}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -31,6 +31,8 @@ import org.apache.spark.internal.{ColorfulLogging, Logging}
 import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.serializer._
 import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter}
+
+import scala.reflect.ClassTag
 
 /**
  * Sorts and potentially merges a number of key-value pairs of type (K, V) to produce key-combiner
@@ -87,7 +89,7 @@ import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter}
  *
  *  - Users are expected to call stop() at the end to delete all the intermediate files.
  */
-private[spark] class ExternalSorter[K, V, C](
+private[spark] class ExternalSorter[K, V : ClassTag, C](
     context: TaskContext,
     aggregator: Option[Aggregator[K, V, C]] = None,
     var partitioner: Option[Partitioner] = None,
@@ -126,6 +128,8 @@ private[spark] class ExternalSorter[K, V, C](
   // store them in an array buffer.
   @volatile private var map = new PartitionedAppendOnlyMap[K, C]
   @volatile private var buffer = new PartitionedPairBuffer[K, C]
+
+  private var currentIterator: Iterator[Product2[K, V]] = _
 
   // Total spilling statistics
   private var _diskBytesSpilled = 0L
@@ -221,6 +225,7 @@ private[spark] class ExternalSorter[K, V, C](
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
     val shuffleWriteMetrics = context.taskMetrics().shuffleWriteMetrics
+    val startTime = System.nanoTime()
 
     if (shouldCombine) {
       // Combine values in-memory first using our AppendOnlyMap
@@ -230,7 +235,6 @@ private[spark] class ExternalSorter[K, V, C](
       val update = (hadValue: Boolean, oldValue: C) => {
         if (hadValue) mergeValue(oldValue, kv._2) else createCombiner(kv._2)
       }
-
       /**
         * @todo Do a huge refactor!
         */
@@ -239,35 +243,51 @@ private[spark] class ExternalSorter[K, V, C](
         kv = records.next()
         val partitionId = getPartition(kv._1)
         if (map((partitionId, kv._1)) == null) {
-          shuffleWriteMetrics.foreach(_.addKeyWritten(kv._1))
+          shuffleWriteMetrics.foreach(_.addKeyWritten(kv._1, 1))
         }
         map.changeValue((partitionId, kv._1), update)
         maybeSpillCollection(usingMap = true)
-        checkAndDoRepartitioning()
-      }
-      if(records.hasNext) {
-        logInfo(s"Stopped building histogram for $taskInfo.", "DRHistogram", "DRDebug")
+        maybeRepartition()
       }
     } else {
+      currentIterator =
+        if (SparkEnv.get.conf.getBoolean("spark.shuffle.write.data-characteristics", true)) {
+          logInfo("Recording data characteristics of shuffle write.")
+          if (DataCharacteristicsAccumulatorParam.isWeightable[V]()) {
+            logInfo("Values are weightable, going to use WeightedDataCharacteristicsIterator.")
+            new WeightedDataCharacteristicsIterator[K, V with Weightable](
+              records.asInstanceOf[Iterator[Product2[K, V with Weightable]]],
+              shuffleWriteMetrics)
+          } else {
+            logInfo(s"Values are not weightable (${
+                      DataCharacteristicsAccumulatorParam.className[V]()
+                    }), going to use default DataCharacteristicsIterator.")
+            new DataCharacteristicsIterator[K, V](records, shuffleWriteMetrics)
+          }
+        } else {
+          records
+        }
+
       // Stick values into our buffer
-      while (records.hasNext) {
+      while (currentIterator.hasNext) {
         addElementsRead()
-        val kv = records.next()
+        val kv = currentIterator.next()
         val partitionId = getPartition(kv._1)
-        shuffleWriteMetrics.foreach(_.addKeyWritten(kv._1))
         buffer.insert(partitionId, kv._1, kv._2.asInstanceOf[C])
         maybeSpillCollection(usingMap = false)
-        checkAndDoRepartitioning()
-      }
-      if (records.hasNext) {
-        logInfo(s"Stopped building histogram for $taskInfo.", "DRHistogram", "DRDebug")
+        maybeRepartition()
       }
     }
 
+    val endTime = System.nanoTime()
+    val insertionTime = (endTime - startTime) / 1000
+    shuffleWriteMetrics.foreach(_.incInsertionTime(insertionTime))
+
+    logInfo(s"Insertion took $insertionTime ms.")
     logDebug(s"Finished execution of $taskInfo.", "strongBlue")
   }
 
-  private def checkAndDoRepartitioning(): Unit = {
+  private def maybeRepartition(): Unit = {
     if (isVersionChanged) {
       // TODO repartitioning more times when version jumps up more than one
       updateCurrentVersion()
@@ -282,6 +302,8 @@ private[spark] class ExternalSorter[K, V, C](
       context.taskMetrics().shuffleWriteMetrics.foreach {
         _.incRepartitioningTime(repartitioningTime)
       }
+      currentIterator =
+        currentIterator.asInstanceOf[DataCharacteristicsIterator[K, V]].originalIterator
     }
   }
 
@@ -1035,5 +1057,29 @@ private[spark] class ExternalSorter[K, V, C](
           throw new SparkException("Histogram meta is not available, can not push version!")
       }
     )
+  }
+}
+
+class DataCharacteristicsIterator[K, V](
+  val originalIterator: Iterator[Product2[K, V]],
+  val shuffleWriteMetrics: Option[ShuffleWriteMetrics])
+extends Iterator[Product2[K, V]] {
+  override def hasNext: Boolean = originalIterator.hasNext
+
+  override def next(): Product2[K, V] = {
+    val pair = originalIterator.next
+    shuffleWriteMetrics.foreach(_.addKeyWritten(pair._1, 1))
+    pair
+  }
+}
+
+class WeightedDataCharacteristicsIterator[K, V <: Weightable](
+  originalIterator: Iterator[Product2[K, V]],
+  shuffleWriteMetrics: Option[ShuffleWriteMetrics])
+extends DataCharacteristicsIterator[K, V](originalIterator, shuffleWriteMetrics) {
+  override def next(): Product2[K, V] = {
+    val pair = originalIterator.next
+    shuffleWriteMetrics.foreach(_.addKeyWritten(pair._1, pair._2.complexity()))
+    pair
   }
 }

@@ -19,6 +19,8 @@ package org.apache.spark.shuffle
 
 import org.apache.spark.{ShuffleDependency, TaskContext}
 
+import scala.reflect.ClassTag
+
 /**
  * Pluggable interface for shuffle systems. A ShuffleManager is created in SparkEnv on the driver
  * and on each executor, based on the spark.shuffle.manager setting. The driver registers shuffles
@@ -38,13 +40,14 @@ private[spark] trait ShuffleManager {
       dependency: ShuffleDependency[K, V, C]): ShuffleHandle
 
   /** Get a writer for a given partition. Called on executors by map tasks. */
-  def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext): ShuffleWriter[K, V]
+  def getWriter[K, V : ClassTag](handle: ShuffleHandle,
+                                 mapId: Int, context: TaskContext): ShuffleWriter[K, V]
 
   /**
    * Get a reader for a range of reduce partitions (startPartition to endPartition-1, inclusive).
    * Called on executors by reduce tasks.
    */
-  def getReader[K, C](
+  def getReader[K, C : ClassTag](
       handle: ShuffleHandle,
       startPartition: Int,
       endPartition: Int,

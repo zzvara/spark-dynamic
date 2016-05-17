@@ -37,6 +37,7 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   private[executor] val _recordsWritten = new LongAccumulator
   private[executor] val _writeTime = new LongAccumulator
   private[executor] val _repartitioningTime = new LongAccumulator
+  private[executor] val _insertionTime = new LongAccumulator
   private[executor] val _dataCharacteristics = new Accumulator[Seq[(Any, Int)]]
 
   private var _repartitioner: Option[Partitioner] = None
@@ -95,13 +96,16 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
    */
   def repartitioningTime: Long = _repartitioningTime.localValue
 
-  private[spark] def addKeyWritten(k: Any): Unit = {
-    _dataCharacteristics.add(Map[Any, Double](k -> 1.0))
+  def insertionTime: Long = _insertionTime.localValue
+
+  private[spark] def addKeyWritten(k: Any, complexity: Int): Unit = {
+    _dataCharacteristics.add(Map[Any, Double]((k, complexity) -> 1.0))
   }
   private[spark] def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)
   private[spark] def incWriteTime(v: Long): Unit = _writeTime.add(v)
   private[spark] def incRepartitioningTime(v: Long): Unit = _repartitioningTime.add(v)
+  private[spark] def incInsertionTime(v: Long): Unit = _insertionTime.add(v)
   private[spark] def decBytesWritten(v: Long): Unit = {
     _bytesWritten.setValue(bytesWritten - v)
   }
@@ -150,6 +154,7 @@ class RepartitioningInfo(
 
   def finishTracking(): Unit = {
     trackingFinished = true
-    logInfo(s"Finished tracking of stage:$stageID-task:$taskID.\n\tRepartitioner: $repartitioner, version: $version.", "yellow")
+    logInfo(s"Finished tracking of stage: $stageID, task:$taskID." +
+            s"\n\tRepartitioner: $repartitioner, version: $version.", "yellow")
   }
 }

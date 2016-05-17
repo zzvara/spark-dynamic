@@ -24,11 +24,13 @@ import org.apache.spark.storage.{BlockManager, ShuffleBlockFetcherIterator}
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
 
+import scala.reflect.ClassTag
+
 /**
  * Fetches and reads the partitions in range [startPartition, endPartition) from a shuffle by
  * requesting them from other nodes' block stores.
  */
-private[spark] class BlockStoreShuffleReader[K, C](
+private[spark] class BlockStoreShuffleReader[K, C : ClassTag](
     handle: BaseShuffleHandle[K, _, C],
     startPartition: Int,
     endPartition: Int,
@@ -76,6 +78,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
     val readMetrics = context.taskMetrics.createTempShuffleReadMetrics()
     val metricIter = CompletionIterator[(Any, Any), Iterator[(Any, Any)]](
       if (SparkEnv.get.conf.getBoolean("spark.metrics.shuffleRead.dataCharacteristics", false)) {
+        logWarning("Recording shuffle read data characteristics.")
         readMetrics.recordIterator(recordIter)
       } else {
         recordIter

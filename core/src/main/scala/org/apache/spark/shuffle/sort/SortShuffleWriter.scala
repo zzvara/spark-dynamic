@@ -25,7 +25,9 @@ import org.apache.spark.storage.ShuffleBlockId
 import org.apache.spark.util.Utils
 import org.apache.spark.util.collection.ExternalSorter
 
-private[spark] class SortShuffleWriter[K, V, C](
+import scala.reflect.ClassTag
+
+private[spark] class SortShuffleWriter[K, V : ClassTag, C](
     shuffleBlockResolver: IndexShuffleBlockResolver,
     handle: BaseShuffleHandle[K, V, C],
     mapId: Int,
@@ -59,6 +61,7 @@ private[spark] class SortShuffleWriter[K, V, C](
 
   /** Write a bunch of records to this task's output */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
+    logInfo("Writer started.")
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
       new ExternalSorter[K, V, C](context, dep.aggregator, Some(dep.partitioner),
@@ -70,7 +73,7 @@ private[spark] class SortShuffleWriter[K, V, C](
       new ExternalSorter[K, V, V](context, aggregator = None, Some(dep.partitioner),
         ordering = None, dep.serializer)
     }
-    logInfo(s"Running task ${context.taskAttemptId()} with records ${records.toString}")
+    logInfo(s"Running task ${context.taskAttemptId()} with records ${records.toString}", "default")
     sorter.insertAll(records)
 
     // Don't bother including the time to open the merged output file in the shuffle write time,

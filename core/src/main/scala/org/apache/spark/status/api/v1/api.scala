@@ -216,6 +216,7 @@ class ShuffleWriteMetrics private[spark](
     val bytesWritten: Long,
     val writeTime: Long,
     val repartitioningTime: Long,
+    val insertionTime: Long,
     val recordsWritten: Long,
     val dataCharacteristics: Map[Any, Double])
 
