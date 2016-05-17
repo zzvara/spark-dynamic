@@ -20,18 +20,17 @@ package org.apache.spark.util.collection
 import java.io._
 import java.util.Comparator
 
-import org.apache.spark.AccumulatorParam.{Weightable, DataCharacteristicsAccumulatorParam}
-
-import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 import com.google.common.io.ByteStreams
+import org.apache.spark.AccumulatorParam.{DataCharacteristicsAccumulatorParam, Weightable}
 import org.apache.spark._
-import org.apache.spark.executor.{RepartitioningInfo, ShuffleWriteMetrics}
-import org.apache.spark.internal.{ColorfulLogging, Logging}
+import org.apache.spark.executor.ShuffleWriteMetrics
+import org.apache.spark.internal.ColorfulLogging
 import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.serializer._
 import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter}
 
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 /**
@@ -960,31 +959,69 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
   def repartition(): Unit = {
     if (numPartitions > 1) {
       initializeRepartitioning()
-      _elementsRead = 0
-      oldSpills.foreach(repartitionSpill)
+      val isSomethingInMemory = repartitionInMemory()
+      repartitionSpills(isSomethingInMemory)
       finishRepartitioning()
     }
   }
 
   private def initializeRepartitioning(): Unit = {
-    spillFromMemory()
+    _elementsRead = 0
     isRepartitioning = true
     partitioner = newPartitioner
-    oldSpills = spills
-    spills = new ArrayBuffer[SpilledFile]()
+  }
+
+  private def repartitionInMemory(): Boolean = {
+    def getCollection = if (aggregator.isDefined) map else buffer
+    val bufferIterator = getCollection.partitionedDestructiveSortedIterator(None).buffered
+
+    if (bufferIterator.nonEmpty) {
+      logInfo(s"Repartitioning in-memory data", "DRDebug")
+      val repartitioningBuffer = new RepartitioningBuffer[K, C](partitioner.get)
+      bufferIterator.foreach(x => repartitioningBuffer.insert(x._1._2, x._2, x._1._1))
+
+      if (aggregator.isDefined) {
+        map = new PartitionedAppendOnlyMap[K, C]
+      } else {
+        buffer = new PartitionedPairBuffer[K, C]()
+      }
+      val collection = getCollection
+
+      repartitioningBuffer.partitionedDestructiveSortedIterator(comparator).foreach(x => {
+        collection.insert(x._1._1, x._1._2, x._2)
+        addElementsRead()
+      })
+      true
+    } else {
+      false
+    }
+  }
+
+  def repartitionSpills(isSomethingInMemory: Boolean): Unit = {
+    if (spills.nonEmpty) {
+      logInfo(s"Repartitioning spills", "DRDebug")
+      logInfo(s"Number of spills before repartitioning: ${spills.length}", "DRDebug")
+      _diskBytesSpilled = 0
+      oldSpills = spills
+      spills = new ArrayBuffer[SpilledFile]()
+      if (isSomethingInMemory) {
+        spillFromMemory()
+      }
+      oldSpills.foreach(repartitionSpill)
+      oldSpills = null
+      logInfo(s"Number of spills after repartitioning: ${spills.length}", "DRDebug")
+    }
   }
 
   private def spillFromMemory(): Unit = {
-    if (_elementsRead > 0) {
-      logDebug(s"Spilling from memory before repartitioning ${_elementsRead} records.",
-                "DRRepartitioning")
-      if (aggregator.isDefined) {
-        spill(map)
-        map = new PartitionedAppendOnlyMap[K, C]
-      } else {
-        spill(buffer)
-        buffer = new PartitionedPairBuffer[K, C]
-      }
+    logDebug(s"Spilling from memory before repartitioning ${_elementsRead} records.",
+      "DRRepartitioning")
+    if (aggregator.isDefined) {
+      spill(map)
+      map = new PartitionedAppendOnlyMap[K, C]
+    } else {
+      spill(buffer)
+      buffer = new PartitionedPairBuffer[K, C]
     }
   }
 
@@ -1017,35 +1054,6 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
 
   private def finishRepartitioning(): Unit = {
     pushVersion()
-    oldSpills = null
-    isRepartitioning = false
-  }
-
-  private def repartitionInMemory(): Unit = {
-    isRepartitioning = true
-    partitioner = newPartitioner
-
-    var collection = if (aggregator.isDefined) map else buffer
-    val bufferIterator = collection.partitionedDestructiveSortedIterator(None).buffered
-
-    if (bufferIterator.nonEmpty) {
-      val repartitioningBuffer = new RepartitioningBuffer[K, C](partitioner.get)
-      bufferIterator.foreach(x => repartitioningBuffer.insert(x._1._2, x._2, x._1._1))
-
-      if (aggregator.isDefined) {
-        map = new PartitionedAppendOnlyMap[K, C]
-      } else {
-        buffer = new PartitionedPairBuffer[K, C]()
-      }
-      val collection = if (aggregator.isDefined) map else buffer
-
-      repartitioningBuffer.partitionedDestructiveSortedIterator(None).foreach(x => {
-        collection.insert(x._1._1, x._1._2, x._2)
-        addElementsRead()
-      })
-    }
-    pushVersion()
-
     isRepartitioning = false
   }
 
