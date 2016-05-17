@@ -49,14 +49,6 @@ object Music {
 
     val tracks =
       loadData(args(0), Track.apply)
-        .cache()
-        .mapPartitionsWithIndex {
-          (index, iter) => {
-            val seq = iter.toSeq
-            println(s"Size of partition $index before filter is ${seq.size}.")
-            seq.toIterator
-          }
-        }
 
     val tags =
       loadData(args(1), Tag.apply)
@@ -91,22 +83,21 @@ object Music {
           }
         }
 
+    /*
       tagsWithTracks
         .repartition(38)
         .groupByKey()
         .map(x => x)
         .count()
 
-    /*
         .mapPartitionsWithIndex((x,y) => y.map(z => (z._1, x)))
         .distinct()
         .groupByKey()
         .map(x => (x._1, x._2.size, x._2))
         .filter(x => x._2 != 1)
         .collect().take(10).foreach(println)
-        */
 
-    /*
+
     val tagFrequencies = tagsWithTracks
       .map(pair => (pair._1, 1))
       .reduceByKey(_ + _)
@@ -115,7 +106,7 @@ object Music {
 
     println(tagFrequencies.count())
     tagFrequencies.take(50) foreach println
-
+*/
     tagsWithTracks.join {
       tags.map(tag => (tag.ID, tag.value))
     }
@@ -124,7 +115,6 @@ object Music {
       }
     )
     .count()
-    */
 
     /*
     println(s"Number of tracks: ${tracks.count()}")
@@ -265,7 +255,7 @@ trait Base[T]{
   def apply(ID: Int, created: Int,
             map: Map[String, Any],
             linked: Option[Map[String, Any]])(implicit m: Manifest[T]): T = {
-    m.erasure.getConstructors
+    m.runtimeClass.getConstructors
       .filter(_.getParameterCount == 4)
       .head.newInstance(ID: Integer, created: Integer, map, linked).asInstanceOf[T]
   }

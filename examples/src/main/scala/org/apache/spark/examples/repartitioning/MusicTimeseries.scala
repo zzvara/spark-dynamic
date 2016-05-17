@@ -1,22 +1,22 @@
 
 package org.apache.spark.examples.repartitioning
 
+import org.apache.spark.AccumulatorParam.Weightable
 import org.apache.spark.{SparkConf, SparkContext}
 
 object MusicTimeseries {
   def main(args: Array[String]) {
     val configuration = new SparkConf()
       .setAppName("MusicTimeseries")
-      .setJars(Seq("/home/ehnalis/Projects/dyna/examples/target/scala-2.11/jars/spark-examples_2.11-2.0.0-SNAPSHOT.jar"))
+      .setJars(Seq(args(1)))
     val context = new SparkContext(configuration)
 
     val records =
       context
-        .textFile(args(0), 20)
+        .textFile(args(0), args(2).toInt)
         .map(line => new Record(line.split("""\|""")))
-        .flatMap(record => record.tags.map(t => (t, 1)))
+        .flatMap(record => record.tags.map(t => (t, record)))
         //.filter(_._1 != -1)
-        .cache()
 
     /*
     val frequencies =
@@ -28,11 +28,11 @@ object MusicTimeseries {
 
     // frequencies foreach println
 
-    println(records.groupByKey().map {
+    records.groupByKey().map {
       _._2.map {
-        x => x * 1
+        x => x.complexity()
       }
-    }.count())
+    }.take(50) foreach println
 
     Thread.sleep(60 * 60 * 1000)
   }
@@ -50,7 +50,7 @@ class Record(
   val subsType: String,
   val artists: Seq[Int],
   val albums: Seq[Int])
-extends Serializable {
+extends Weightable with Serializable {
   def this(split: Array[String]) = {
     this(split(0).toLong,
          split(1).toInt,
@@ -63,6 +63,8 @@ extends Serializable {
          split(8).split(",").map(_.toInt),
          split(9).split(",").filter(!_.contains("None")).map(_.toInt))
   }
+
+  override def complexity(): Int = tags.size
 }
 
 /**
