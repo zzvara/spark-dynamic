@@ -102,7 +102,11 @@ case class SparkListenerExecutorAdded(time: Long, executorId: String, executorIn
   extends SparkListenerEvent
 
 @DeveloperApi
-case class SparkListenerExecutorRemoved(time: Long, executorId: String, reason: String)
+case class SparkListenerExecutorRemoved(
+    time: Long,
+    executorId: String,
+    reason: String,
+    executorInfo: ExecutorInfo)
   extends SparkListenerEvent
 
 @DeveloperApi

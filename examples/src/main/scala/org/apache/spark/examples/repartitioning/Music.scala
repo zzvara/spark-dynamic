@@ -21,9 +21,11 @@ object Music {
   def loadData[T: ClassTag](
     fileName: String,
     constructor: (Int, Int, Map[String, Any], Option[Map[String, Any]]) => T,
+    numberOfPartitions: Int,
     dropProbability: Double = 0.0)(implicit context: SparkContext): RDD[T] = {
     context
-      .textFile(fileName, 35)
+      .textFile(fileName, numberOfPartitions)
+      .coalesce(numberOfPartitions)
       // .filter(x => drop(probability = dropProbability))
       .map(_.split("\t").drop(1))
       .flatMap(a => {
@@ -43,15 +45,16 @@ object Music {
 
     implicit val context = new SparkContext(configuration)
 
+    val numberOfPartitions = args(3).toInt
     /**
       * Loading some data...
       */
 
     val tracks =
-      loadData(args(0), Track.apply)
+      loadData(args(0), Track.apply, numberOfPartitions)
 
     val tags =
-      loadData(args(1), Tag.apply)
+      loadData(args(1), Tag.apply, numberOfPartitions)
 
     /*
 

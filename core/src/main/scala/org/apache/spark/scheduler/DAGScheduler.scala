@@ -247,7 +247,7 @@ class DAGScheduler(
    * Called by TaskScheduler implementation when a host is added.
    */
   def executorAdded(execId: String, host: String): Unit = {
-    eventProcessLoop.post(ExecutorAdded(execId, host))
+    eventProcessLoop.post(ExecutorAdded(execId, host, taskScheduler.totalSlots()))
   }
 
   /**
@@ -1621,7 +1621,7 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
     case AllJobsCancelled =>
       dagScheduler.doCancelAllJobs()
 
-    case ExecutorAdded(execId, host) =>
+    case ExecutorAdded(execId, host, executorInfo) =>
       dagScheduler.handleExecutorAdded(execId, host)
 
     case ExecutorLost(execId) =>

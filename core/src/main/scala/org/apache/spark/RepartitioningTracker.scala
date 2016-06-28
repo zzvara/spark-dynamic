@@ -17,8 +17,10 @@
 
 package org.apache.spark
 
+import java.util.concurrent.atomic.AtomicInteger
+
 import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
-import org.apache.spark.executor.RepartitioningInfo
+import org.apache.spark.executor.{RepartitioningInfo, ShuffleWriteMetrics}
 import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristicsInfo
 import org.apache.spark.internal.{ColorfulLogging, Logging}
 import org.apache.spark.rpc._
@@ -173,6 +175,8 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
       RepartitioningModes.OFF
     }
 
+  private val totalSlots: AtomicInteger = new AtomicInteger(0)
+
   /**
     * Initializes a local worker and asks it to register with this
     * repartitioning tracker master.
@@ -280,7 +284,8 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
         val stageID = stageSubmitted.stageInfo.stageId
         logInfo(s"A stage with id $stageID submitted with dynamic repartitioning " +
                 s"mode $repartitioningMode.", "DRCommunication")
-        val scanStrategy = new ScanStrategy(stageID, new ThroughputPrototype())
+        val scanStrategy = new ScanStrategy(stageID,
+          new ThroughputPrototype(totalSlots.intValue()))
         _stageData.update(stageID,
           new MasterStageData(stageInfo,
                               new Strategy(stageID, stageInfo.numTasks, partitioner.get),
@@ -292,6 +297,17 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
       }
     }
   }
+
+  override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = {
+    totalSlots.addAndGet(executorAdded.executorInfo.totalCores)
+    logInfo(s"Executor added. Total cores is ${totalSlots.intValue()}.")
+  }
+
+  override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = {
+    totalSlots.addAndGet(-executorRemoved.executorInfo.totalCores)
+    logInfo(s"Executor removed. Total cores is ${totalSlots.intValue()}.")
+  }
+
 
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
     this.synchronized {
@@ -569,7 +585,7 @@ trait ScannerPrototype extends Serializable {
   * based on many factors when to send the histogram to the master.
   * Also, it should declare the sampling method.
   */
-abstract class Scanner() extends Serializable with Runnable with ColorfulLogging {
+abstract class Scanner(val totalSlots: Int) extends Serializable with Runnable with ColorfulLogging {
   var taskContext: TaskContext = _
   var isRunning: Boolean = false
 
@@ -580,17 +596,26 @@ abstract class Scanner() extends Serializable with Runnable with ColorfulLogging
   }
 }
 
-class ThroughputPrototype extends ScannerPrototype {
-  def newInstance(): Scanner = new Throughput()
+class ThroughputPrototype(val totalSlots: Int) extends ScannerPrototype {
+  def newInstance(): Scanner = new Throughput(totalSlots)
 }
 
-class Throughput() extends Scanner {
+class Throughput(override val totalSlots: Int) extends Scanner(totalSlots) {
   private var lastHistogramHeight: Long = 0
   private val keyHistogramWidth: Int =
     SparkEnv.get.conf.getInt("spark.repartitioning.key-histogram.truncate", 50)
 
   override def stop(): Unit = {
     isRunning = false
+  }
+
+  def updateTotalSlots(shuffleWriteMetrics: Option[ShuffleWriteMetrics]): Unit = {
+    logInfo("Updating number of total slots.")
+    shuffleWriteMetrics.foreach {
+      _.dataCharacteristics.getParam
+        .asInstanceOf[DataCharacteristicsAccumulatorParam]
+        .updateTotalSlots(totalSlots)
+    }
   }
 
   override def run(): Unit = {
@@ -605,6 +630,9 @@ class Throughput() extends Scanner {
         isRunning = false
       }
     })
+
+    updateTotalSlots(taskContext.taskMetrics().shuffleWriteMetrics)
+
     Thread.sleep(SparkEnv.get.conf.getInt("spark.repartitioning.throughput.interval", 1000))
     while (isRunning) {
       taskContext.taskMetrics().shuffleWriteMetrics match {
@@ -639,6 +667,7 @@ class Throughput() extends Scanner {
                      s"task ${taskContext.taskAttemptId()}.", "DRHistogram")
       }
       Thread.sleep(SparkEnv.get.conf.getInt("spark.repartitioning.throughput.interval", 1000))
+      updateTotalSlots(taskContext.taskMetrics().shuffleWriteMetrics)
     }
     logInfo(s"Scanner is finishing for stage ${taskContext.stageId()} task" +
             s" ${taskContext.taskAttemptId()}.", "default", "strongBlue")

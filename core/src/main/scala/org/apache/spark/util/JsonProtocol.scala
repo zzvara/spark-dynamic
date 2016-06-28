@@ -636,7 +636,8 @@ private[spark] object JsonProtocol {
     val time = (json \ "Timestamp").extract[Long]
     val executorId = (json \ "Executor ID").extract[String]
     val reason = (json \ "Removed Reason").extract[String]
-    SparkListenerExecutorRemoved(time, executorId, reason)
+    val executorInfo = executorInfoFromJson(json \ "Executor Info")
+    SparkListenerExecutorRemoved(time, executorId, reason, executorInfo)
   }
 
   def logStartFromJson(json: JValue): SparkListenerLogStart = {

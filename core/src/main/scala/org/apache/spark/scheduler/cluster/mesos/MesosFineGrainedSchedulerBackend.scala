@@ -69,6 +69,8 @@ private[spark] class MesosFineGrainedSchedulerBackend(
 
   @volatile var appId: String = _
 
+  override def totalSlots(): Int = -1
+
   override def start() {
     classLoader = Thread.currentThread.getContextClassLoader
     val driver = createSchedulerDriver(
@@ -407,7 +409,8 @@ private[spark] class MesosFineGrainedSchedulerBackend(
    */
   private def removeExecutor(slaveId: String, reason: String) = {
     synchronized {
-      listenerBus.post(SparkListenerExecutorRemoved(System.currentTimeMillis(), slaveId, reason))
+      listenerBus.post(SparkListenerExecutorRemoved(
+        System.currentTimeMillis(), slaveId, reason, new ExecutorInfo(slaveId, -1, Map())))
       slaveIdToExecutorInfo -= slaveId
     }
   }

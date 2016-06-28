@@ -75,7 +75,10 @@ private[scheduler] case class CompletionEvent(
     taskInfo: TaskInfo)
   extends DAGSchedulerEvent
 
-private[scheduler] case class ExecutorAdded(execId: String, host: String) extends DAGSchedulerEvent
+private[scheduler] case class ExecutorAdded(
+    execId: String,
+    host: String,
+    totalSlots: Int) extends DAGSchedulerEvent
 
 private[scheduler] case class ExecutorLost(execId: String) extends DAGSchedulerEvent
 

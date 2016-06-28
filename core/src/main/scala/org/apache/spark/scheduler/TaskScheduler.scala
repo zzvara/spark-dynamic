@@ -89,4 +89,5 @@ private[spark] trait TaskScheduler {
    */
   def applicationAttemptId(): Option[String]
 
+  def totalSlots(): Int
 }

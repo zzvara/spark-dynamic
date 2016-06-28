@@ -109,6 +109,8 @@ private[spark] class LocalSchedulerBackend(
     override def onStopRequest(): Unit = stop(SparkAppHandle.State.KILLED)
   }
 
+  override def totalSlots(): Int = totalCores
+
   /**
    * Returns a list of URLs representing the user classpath.
    *

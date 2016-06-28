@@ -191,12 +191,20 @@ object AccumulatorParam {
     def version: Int = _version
     def incrementVersion(): Unit = { _version += 1 }
 
+    def updateTotalSlots(totalSlots: Int): Unit = {
+      histogramCompaction = Math.max(histogramCompaction, totalSlots * 2)
+      logInfo(s"Updated histogram compaction level based on $totalSlots number" +
+              s" of total slots, to $histogramCompaction.")
+    }
+
+    private var histogramCompaction = HISTOGRAM_COMPACTION
+
     def normalize(histogram: Map[Any, Double], normalizationParam: Long): Map[Any, Double] = {
       val normalizationFactor = normalizationParam * sampleRate
       histogram.mapValues(_ / normalizationFactor)
     }
 
-    def increase(pair: Product2[Any, Any]): Double = _sampleRate
+    def increase(pair: Product2[Any, Any]): Double = 1.0
 
     override def addAccumulator(r: Map[Any, Double], t: Map[Any, Double]): Map[Any, Double] = {
       val pair = t.toList.head._1.asInstanceOf[Product2[Any, Any]]
@@ -221,8 +229,8 @@ object AccumulatorParam {
               .filter(p => p._2 > DROP_BOUNDARY)
           // Decide if additional cut is needed.
           if (_width > HISTOGRAM_SIZE_BOUNDARY) {
-            _width = HISTOGRAM_COMPACTION
-            scaledHistogram.toSeq.sortBy(-_._2).take(HISTOGRAM_COMPACTION).toMap
+            _width = histogramCompaction
+            scaledHistogram.toSeq.sortBy(-_._2).take(histogramCompaction).toMap
           } else {
             scaledHistogram
           }

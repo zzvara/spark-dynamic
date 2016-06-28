@@ -2,7 +2,7 @@
 package org.apache.spark.examples.repartitioning
 
 import org.apache.spark.AccumulatorParam.Weightable
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.{HashPartitioner, Partitioner, SparkConf, SparkContext}
 
 object MusicTimeseries {
   def main(args: Array[String]) {
@@ -28,11 +28,21 @@ object MusicTimeseries {
 
     // frequencies foreach println
 
-    records.groupByKey().map {
+    records.groupByKey(new Partitioner {
+      val hp: HashPartitioner = new HashPartitioner(399)
+      override def numPartitions: Int = 400
+      override def getPartition(key: Any): Int = {
+        if (key.asInstanceOf[Int] == -1) {
+          399
+        } else {
+          hp.getPartition(key)
+        }
+      }
+    }).map {
       _._2.map {
         x => x.complexity()
       }
-    }.take(50) foreach println
+    }.count()
 
     Thread.sleep(60 * 60 * 1000)
   }
