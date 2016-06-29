@@ -177,6 +177,8 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
 
   private val totalSlots: AtomicInteger = new AtomicInteger(0)
 
+  private def dagScheduler: DAGScheduler = SparkContext.getOrCreate().dagScheduler
+
   /**
     * Initializes a local worker and asks it to register with this
     * repartitioning tracker master.

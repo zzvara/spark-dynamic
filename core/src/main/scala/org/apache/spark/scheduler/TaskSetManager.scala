@@ -180,6 +180,8 @@ private[spark] class TaskSetManager(
 
   override def schedulingMode: SchedulingMode = SchedulingMode.NONE
 
+  def refine(numberOfPartitions: Int) = ???
+
   var emittedTaskSizeWarning = false
 
   /** Add a task to all the pending-task lists that it should be on. */

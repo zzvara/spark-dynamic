@@ -236,6 +236,10 @@ class DAGScheduler(
       BlockManagerHeartbeat(blockManagerId), new RpcTimeout(600 seconds, "BlockManagerHeartbeat"))
   }
 
+  def refineStage(stageId: Int, attemptId: Int, numberOfPartitionins: Int): Unit = {
+    taskScheduler.refineStage(stageId, attemptId, numberOfPartitionins)
+  }
+
   /**
    * Called by TaskScheduler implementation when an executor fails.
    */
