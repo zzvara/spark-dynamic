@@ -21,13 +21,14 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark.executor.{RepartitioningInfo, ShuffleWriteMetrics}
-import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristicsInfo
+import org.apache.spark.executor.ShuffleWriteMetrics.{DataCharacteristics, DataCharacteristicsInfo}
 import org.apache.spark.internal.{ColorfulLogging, Logging}
 import org.apache.spark.rpc._
 import org.apache.spark.scheduler._
 import org.apache.spark.util.{TaskCompletionListener, ThreadUtils}
 
 import scala.collection.mutable
+import scala.collection.mutable.{Map, _}
 import scala.reflect.ClassTag
 import scala.util.hashing.MurmurHash3
 
@@ -60,8 +61,18 @@ private[spark] case class Register(executorID: String, workerReferece: RpcEndpoi
 /**
   * Scan strategy message sent to workers.
   */
-private[spark] case class ScanStrategy(stageID: Int, scanner: ScannerPrototype)
-  extends RepartitioningTrackerMessage
+private[spark] case class StandaloneStrategy(stageID: Int, scanner: ScannerPrototype)
+  extends ScanStrategy
+
+/**
+  * Scan strategy message sent to workers.
+  */
+private[spark] case class StreamingStrategy(
+  streamID: Int,
+  scanner: ScannerPrototype)
+extends ScanStrategy
+
+private[spark] class ScanStrategy extends RepartitioningTrackerMessage
 
 private[spark] case class ScanStrategies(scanStrategies: List[ScanStrategy])
   extends RepartitioningTrackerMessage
@@ -98,7 +109,11 @@ case class MasterStageData(
   info: StageInfo,
   strategy: Strategy,
   mode: RepartitioningModes.Value,
-  scanStrategy: ScanStrategy)
+  scanStrategy: StandaloneStrategy)
+
+case class MasterJobData(
+  jobID: Int,
+  streamID: Int)
 
 case class RepartitioningStageData(
   var scannerPrototype: ScannerPrototype,
@@ -140,19 +155,19 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
   /**
     * Collection of repartitioning workers. We expect them to register.
     */
-  private val workers = mutable.HashMap[String, Worker]()
+  protected val workers = HashMap[String, Worker]()
   /**
     * Local worker in case when running in local mode.
     */
-  private var localWorker: Option[RepartitioningTrackerWorker] = None
+  protected var localWorker: Option[RepartitioningTrackerWorker] = None
 
   /**
     * Final histograms recorded by repartitioning workers.
     * This can be switched with configuration
     * `spark.repartitioning.final-histgorams`. Default value is false.
     */
-  private val finalHistograms =
-    mutable.HashMap[Int, mutable.HashMap[Long, DataCharacteristicsInfo]]()
+  protected val finalHistograms =
+    HashMap[Int, HashMap[Long, DataCharacteristicsInfo]]()
 
   var doneRepartitioning = false
 
@@ -161,7 +176,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
     * running and we're waiting their tasks' histograms to arrive.
     * It also contains repartitioning strategies for stages.
     */
-  private val _stageData = mutable.HashMap[Int, MasterStageData]()
+  protected val _stageData = HashMap[Int, MasterStageData]()
 
   // TODO make this mode stagewise configurable
   private val configuredRPMode =
@@ -175,9 +190,9 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
       RepartitioningModes.OFF
     }
 
-  private val totalSlots: AtomicInteger = new AtomicInteger(0)
+  protected val totalSlots: AtomicInteger = new AtomicInteger(0)
 
-  private def dagScheduler: DAGScheduler = SparkContext.getOrCreate().dagScheduler
+  protected def dagScheduler: DAGScheduler = SparkContext.getOrCreate().dagScheduler
 
   /**
     * Initializes a local worker and asks it to register with this
@@ -251,7 +266,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
               case None => stageFinalHistograms.update(taskID, finalHistogram)
             }
           case None =>
-            val map = mutable.HashMap[Long, DataCharacteristicsInfo]()
+            val map = HashMap[Long, DataCharacteristicsInfo]()
             map.update(taskID, finalHistogram)
             finalHistograms.update(stageID, map)
         }
@@ -271,6 +286,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
   override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {
     this.synchronized {
       val stageInfo = stageSubmitted.stageInfo
+      val jobID = stageInfo.jobId
       val partitioner = stageInfo.partitioner
       val repartitioningMode = if (stageInfo.isInstanceOf[ResultStageInfo] ||
         partitioner.isEmpty)
@@ -284,9 +300,10 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
                 "DRCommunication")
       } else {
         val stageID = stageSubmitted.stageInfo.stageId
-        logInfo(s"A stage with id $stageID submitted with dynamic repartitioning " +
+        logInfo(s"A stage with id $stageID (job ID is $jobID)" +
+                s"submitted with dynamic repartitioning " +
                 s"mode $repartitioningMode.", "DRCommunication")
-        val scanStrategy = new ScanStrategy(stageID,
+        val scanStrategy = new StandaloneStrategy(stageID,
           new ThroughputPrototype(totalSlots.intValue()))
         _stageData.update(stageID,
           new MasterStageData(stageInfo,
@@ -310,15 +327,15 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
     logInfo(s"Executor removed. Total cores is ${totalSlots.intValue()}.")
   }
 
-
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
     this.synchronized {
       val stageID = taskEnd.stageId
       if (_stageData.contains(stageID)) {
         if (taskEnd.reason == Success) {
-          // Currently we disable repartitioning for a stage, if any of its tasks finish.
+          // Currently we disable repartitioning for a stage,
+          // if any of its tasks finish.
           logInfo(s"A task completion detected for stage $stageID. " +
-                  s"Clearing tracking.", "DRCommunication")
+            s"Clearing tracking.", "DRCommunication")
           if(!doneRepartitioning) {
             shutDownScanners(stageID)
             if (_stageData(stageID).mode == RepartitioningModes.ONLY_ONCE) {
@@ -326,11 +343,12 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
             }
           }
         } else {
-          logWarning(s"Detected completion of a failed task for stage $stageID!", "DRCommunication")
+          logWarning(s"Detected completion of a failed task for " +
+                     s"stage $stageID!", "DRCommunication")
         }
       } else {
         logWarning(s"Invalid stage of id $stageID detected on task completion! " +
-                   s"Maybe not tracked intentionally?", "DRCommunication")
+          s"Maybe not tracked intentionally?", "DRCommunication")
       }
     }
   }
@@ -378,7 +396,9 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
                                                  executorId: String)
   extends RepartitioningTracker(conf) with RpcEndpoint with ColorfulLogging {
 
-  private val stageData = mutable.HashMap[Int, RepartitioningStageData]()
+  private val stageData = HashMap[Int, RepartitioningStageData]()
+
+  private val streamData = HashMap[Int, RepartitioningStageData]()
   /**
     * @todo Use this thread pool to instantiate scanners.
     */
@@ -475,7 +495,7 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
   }
 
   override def receive: PartialFunction[Any, Unit] = {
-    case ScanStrategy(stageID, scanner) =>
+    case StandaloneStrategy(stageID, scanner) =>
       logInfo(s"Received scan strategy for stage $stageID.", "DRCommunication")
       stageData.put(stageID, new RepartitioningStageData(scanner))
     case RepartitioningStrategy(stageID, repartitioner, version) =>
@@ -494,8 +514,10 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
     case ScanStrategies(scanStrategies) =>
       logInfo(s"Received a list of scan strategies, with size of ${scanStrategies.length}.")
       scanStrategies.foreach {
-        scanStrategy =>
-        stageData.put(scanStrategy.stageID, new RepartitioningStageData(scanStrategy.scanner))
+        case StandaloneStrategy(stageID, scanner) =>
+          stageData.put(stageID, new RepartitioningStageData(scanner))
+        case StreamingStrategy(streamID, scanner) =>
+          streamData.put(streamID, new RepartitioningStageData(scanner))
       }
     case ShutDownScanners(stageID) =>
       logInfo(s"Stopping scanners for stage $stageID on executor $executorId.",
@@ -506,14 +528,6 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
               s"executor $executorId.", "DRCommunication", "cyan")
       clearStageData(stageID)
   }
-
-//  def stoppingRequest(stageID: Int): Unit = {
-//    if(stageData(stageID).repartitioningInProgress) {
-//      repartitioningInProgress).stopScannersFlag = true
-//    } else {
-//      stopScanners(stageID)
-//    }
-//  }
 
   private def updateRepartitioners(stageID: Int, repartitioner: Partitioner, version: Int): Unit = {
     stageData.get(stageID) match {
@@ -560,13 +574,6 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
       case None =>
     }
   }
-
-//  def isStageDone(stageID: Int): Boolean = {
-//    stageData.get(stageID) match {
-//      case Some(sd) => sd.isRepartitioningFinished()
-//      case None => true
-//    }
-//  }
 }
 
 private[spark] object RepartitioningTracker extends Logging {
@@ -587,7 +594,8 @@ trait ScannerPrototype extends Serializable {
   * based on many factors when to send the histogram to the master.
   * Also, it should declare the sampling method.
   */
-abstract class Scanner(val totalSlots: Int) extends Serializable with Runnable with ColorfulLogging {
+abstract class Scanner(val totalSlots: Int) extends Serializable
+with Runnable with ColorfulLogging {
   var taskContext: TaskContext = _
   var isRunning: Boolean = false
 
@@ -680,11 +688,55 @@ class Throughput(override val totalSlots: Int) extends Scanner(totalSlots) {
   * A decider strategy, that continuously receives histograms from the physical tasks
   * and decides when and how to repartition a certain stage.
   */
-abstract class Decider(stageID: Int, numberOfTasks: Int) {
+abstract class Decider(stageID: Int) extends ColorfulLogging with Serializable {
+  protected val histograms = HashMap[Int, DataCharacteristicsInfo]()
+
+  protected var numPartitions: Int
+  protected var currentVersion: Int = 0
+  protected var repartitionCount: Int = 0
+
+  protected val broadcastHistory = ArrayBuffer[Partitioner]()
+
+  protected val treeDepthHint =
+    SparkEnv.get.conf.getInt("spark.repartitioning.partitioner-tree-depth", 3)
+
   def onHistogramArrival(partitionID: Int,
                          keyHistogram: DataCharacteristicsInfo): Unit
-  protected def decide(): Boolean
-  protected def repartition(globalHistogram: Seq[(Any, Double)]): Unit
+  def decide(): Boolean
+  protected def repartition(globalHistogram: scala.collection.Seq[(Any, Double)]): Partitioner = {
+    logInfo(
+      globalHistogram.foldLeft(
+        s"Global histogram for repartitioning " +
+          s"step $repartitionCount:\n")((x, y) =>
+        x + s"\t${y._1}\t->\t${y._2}\n"), "DRHistogram", "DRRepartitioner")
+
+    val sortedValues = globalHistogram.map(_._2).toArray
+    val sortedKeys = globalHistogram.map(_._1).toArray
+
+    //    cut = Math.min(cut, highestValues.length)
+    val partitioningInfo = PartitioningInfo.newInstance(sortedValues, numPartitions, treeDepthHint)
+
+    val repartitioner = new KeyIsolationPartitioner(
+      partitioningInfo,
+      sortedKeys,
+      WeightedHashPartitioner.newInstance(sortedValues, partitioningInfo, (key: Any) =>
+        (MurmurHash3.stringHash((key.hashCode + 123456791).toString).toDouble
+          / Int.MaxValue + 1) / 2)
+    )
+
+    logDebug("Partitioner created, simulating run with global histogram.")
+    logDebug(globalHistogram.toString())
+    sortedKeys.foreach {
+      key => logInfo(s"Key $key went to ${repartitioner.getPartition(key)}.")
+    }
+
+    logInfo(s"Decided to repartition stage $stageID.", "DRRepartitioner")
+    currentVersion += 1
+
+    logInfo(s"Sending repartitioning strategy.", "DRCommunication", "DRRepartitioner")
+
+    repartitioner
+  }
 }
 
 /**
@@ -693,16 +745,10 @@ abstract class Decider(stageID: Int, numberOfTasks: Int) {
 class Strategy(stageID: Int,
                numberOfTasks: Int,
                partitioner: Partitioner)
-  extends Decider(stageID, numberOfTasks) with ColorfulLogging with Serializable {
+  extends Decider(stageID)  {
 
-  private val numPartitions = partitioner.numPartitions
-  var repartitionCount = 0
-  private val histograms = mutable.HashMap[Int, DataCharacteristicsInfo]()
+  protected var numPartitions: Int = numberOfTasks
   private var minScale = 1.0d
-  private val broadcastHistory = mutable.ArrayBuffer[Partitioner]()
-  private var currentVersion = 0
-  private val treeDepthHint =
-    SparkEnv.get.conf.getInt("spark.repartitioning.partitioner-tree-depth", 3)
   private val sCutHint = 0
   private val pCutHint = Math.pow(2, treeDepthHint - 1).toInt
 
@@ -762,9 +808,8 @@ class Strategy(stageID: Int,
     * It asks the RepartitioningTrackerMaster to broadcast the new
     * strategy to workers.
     */
-  override protected def decide(): Boolean = {
+  override def decide(): Boolean = {
     logInfo(s"Deciding if need any repartitioning now.", "DRRepartitioner")
-
 
     if (histograms.size >=
       SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) {
@@ -775,64 +820,45 @@ class Strategy(stageID: Int,
 
       val globalHistogram =
         histograms.values.map(h => h.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam]
-          .normalize(h.update.get.asInstanceOf[Map[Any, Double]], numRecords))
+          .normalize(h.update.get
+          .asInstanceOf[scala.collection.immutable.Map[Any, Double]], numRecords))
           .reduce(DataCharacteristicsAccumulatorParam.merge[Any, Double](0.0)(
             (a: Double, b: Double) => a + b)
           )
           .toSeq.sortBy(-_._2)
 
-      repartition(globalHistogram)
+      val repartitioner = repartition(globalHistogram.take(numberOfTasks))
+
+      SparkEnv.get.repartitioningTracker
+        .asInstanceOf[RepartitioningTrackerMaster]
+        .broadcastRepartitioningStrategy(stageID, repartitioner, currentVersion)
+      broadcastHistory += repartitioner
+
+      // Histogram is not going to be valid while using another Partitioner.
+      histograms.clear()
+      logInfo(s"Version of histograms pushed up for stage $stageID", "DRHistogram")
       true
     } else {
       false
     }
   }
-
-  override protected def repartition(globalHistogram: Seq[(Any, Double)]): Unit = {
-    //    val height = globalHistogram.map(_._2).sum
-    val sortedNormedHistogram = globalHistogram.take(numPartitions)
-
-    logInfo(
-      sortedNormedHistogram.foldLeft(
-        s"Global histogram for repartitioning " +
-          s"step $repartitionCount:\n")((x, y) =>
-        x + s"\t${y._1}\t->\t${y._2}\n"), "DRHistogram", "DRRepartitioner")
-
-    val sortedValues = sortedNormedHistogram.map(_._2).toArray
-    val sortedKeys = sortedNormedHistogram.map(_._1).toArray
-
-    //    cut = Math.min(cut, highestValues.length)
-    val partitioningInfo = PartitioningInfo.newInstance(sortedValues, numPartitions, treeDepthHint)
-
-    val repartitioner = new KeyIsolationPartitioner(
-      partitioningInfo,
-      sortedKeys,
-      WeightedHashPartitioner.newInstance(sortedValues, partitioningInfo, (key: Any) =>
-        (MurmurHash3.stringHash((key.hashCode + 123456791).toString).toDouble
-          / Int.MaxValue + 1) / 2)
-    )
-
-    logDebug("Partitioner created, simulating run with global histogram.")
-    logDebug(sortedNormedHistogram.toString())
-    sortedKeys.foreach {
-      key => logInfo(s"Key $key went to ${repartitioner.getPartition(key)}.")
-    }
-
-    logInfo(s"Decided to repartition stage $stageID.", "DRRepartitioner")
-    currentVersion += 1
-
-    logInfo(s"Sending repartitioning strategy.", "DRCommunication", "DRRepartitioner")
-
-    SparkEnv.get.repartitioningTracker
-      .asInstanceOf[RepartitioningTrackerMaster]
-      .broadcastRepartitioningStrategy(stageID, repartitioner, currentVersion)
-    broadcastHistory += repartitioner
-
-    // Histogram is not going to be valid while using another Partitioner.
-    histograms.clear()
-    logInfo(s"Version of histograms pushed up for stage $stageID", "DRHistogram")
-  }
 }
 
 class Worker(val executorID: String,
              val reference: RpcEndpointRef)
+
+abstract class RepartitioningTrackerFactory {
+  def createMaster(rpcEnv: RpcEnv, conf: SparkConf): RepartitioningTrackerMaster
+  def createWorker(rpcEnv: RpcEnv, conf: SparkConf,
+                   executorId: String): RepartitioningTrackerWorker
+}
+
+class CoreRepartitioningTrackerFactory extends RepartitioningTrackerFactory {
+  def createMaster(rpcEnv: RpcEnv, conf: SparkConf): RepartitioningTrackerMaster = {
+    new RepartitioningTrackerMaster(rpcEnv, conf)
+  }
+  def createWorker(rpcEnv: RpcEnv, conf: SparkConf,
+                   executorId: String): RepartitioningTrackerWorker = {
+    new RepartitioningTrackerWorker(rpcEnv, conf, executorId)
+  }
+}

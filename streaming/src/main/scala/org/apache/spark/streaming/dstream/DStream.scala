@@ -24,7 +24,6 @@ import scala.collection.mutable.HashMap
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
-
 import org.apache.spark.{SparkContext, SparkException}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.{BlockRDD, PairRDDFunctions, RDD, RDDOperationScope}
@@ -34,6 +33,8 @@ import org.apache.spark.streaming.StreamingContext.rddToFileName
 import org.apache.spark.streaming.scheduler.Job
 import org.apache.spark.streaming.ui.UIUtils
 import org.apache.spark.util.{CallSite, Utils}
+
+import scala.collection.mutable
 
 /**
  * A Discretized Stream (DStream), the basic abstraction in Spark Streaming, is a continuous
@@ -114,6 +115,9 @@ abstract class DStream[T: ClassTag] (
 
   /* Set the creation call site */
   private[streaming] val creationSite = DStream.getCreationSite()
+
+  /** A unique ID for this DStream (within its SparkContext). */
+  val id: Int = ssc.newDStreamId()
 
   /**
    * The base scope associated with the operation that created this DStream.
@@ -353,6 +357,7 @@ abstract class DStream[T: ClassTag] (
             logInfo(s"Marking RDD ${newRDD.id} for time $time for checkpointing")
           }
           generatedRDDs.put(time, newRDD)
+          newRDD.addProperty("dstream_id", id)
         }
         rddOption
       } else {
@@ -432,7 +437,9 @@ abstract class DStream[T: ClassTag] (
       case Some(rdd) =>
         val jobFunc = () => {
           val emptyFunc = { (iterator: Iterator[T]) => {} }
-          context.sparkContext.runJob(rdd, emptyFunc)
+          val properties = new mutable.HashMap[String, Any]() +=
+            (("type", "streaming")) += (("dstream_id", id))
+          context.sparkContext.runJob(rdd, emptyFunc, Some(properties))
         }
         Some(new Job(time, jobFunc))
       case None => None

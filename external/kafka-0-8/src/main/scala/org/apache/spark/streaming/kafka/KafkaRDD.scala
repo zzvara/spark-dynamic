@@ -99,7 +99,8 @@ class KafkaRDD[
     val res = context.runJob(
       this,
       (tc: TaskContext, it: Iterator[R]) => it.take(parts(tc.partitionId)).toArray,
-      parts.keys.toArray)
+      parts.keys.toArray,
+      None)
     res.foreach(buf ++= _)
     buf.toArray
   }

@@ -373,7 +373,7 @@ trait JavaRDDLike[T, This <: JavaRDDLike[T, This]] extends Serializable {
   def collectPartitions(partitionIds: Array[Int]): Array[JList[T]] = {
     // This is useful for implementing `take` from other language frontends
     // like Python where the data is serialized.
-    val res = context.runJob(rdd, (it: Iterator[T]) => it.toArray, partitionIds)
+    val res = context.runJob(rdd, (it: Iterator[T]) => it.toArray, partitionIds, None)
     res.map(_.toSeq.asJava)
   }
 

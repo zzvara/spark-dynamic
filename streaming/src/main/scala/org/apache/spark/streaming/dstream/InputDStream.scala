@@ -47,7 +47,7 @@ abstract class InputDStream[T: ClassTag](_ssc: StreamingContext)
   ssc.graph.addInputStream(this)
 
   /** This is an unique identifier for the input stream. */
-  val id = ssc.getNewInputStreamId()
+  override val id = ssc.getNewInputStreamId()
 
   // Keep track of the freshest rate for this stream using the rateEstimator
   protected[streaming] val rateController: Option[RateController] = None

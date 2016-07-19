@@ -304,7 +304,7 @@ class JsonProtocolSuite extends SparkFunSuite {
     val stageIds = Seq[Int](1, 2, 3, 4)
     val stageInfos = stageIds.map(x => makeStageInfo(x, x * 200, x * 300, x * 400, x * 500))
     val dummyStageInfos =
-      stageIds.map(id => new StageInfo(id, 0, "unknown", 0, None, Seq.empty, Seq.empty, "unknown"))
+      stageIds.map(id => new StageInfo(id, 0, 0, "unknown", 0, None, Seq.empty, Seq.empty, "unknown"))
     val jobStart = SparkListenerJobStart(10, jobSubmissionTime, stageInfos, properties)
     val oldEvent = JsonProtocol.jobStartToJson(jobStart).removeField({_._1 == "Stage Infos"})
     val expectedJobStart =
@@ -347,10 +347,10 @@ class JsonProtocolSuite extends SparkFunSuite {
   test("StageInfo backward compatibility (parent IDs)") {
     // Prior to Spark 1.4.0, StageInfo did not have the "Parent IDs" property
     val stageInfo =
-      new StageInfo(1, 1, "me-stage", 1, None, Seq.empty, Seq(1, 2, 3), "details")
+      new StageInfo(1, 1, 1, "me-stage", 1, None, Seq.empty, Seq(1, 2, 3), "details")
     val oldStageInfo = JsonProtocol.stageInfoToJson(stageInfo).removeField({ _._1 == "Parent IDs"})
     val expectedStageInfo =
-      new StageInfo(1, 1, "me-stage", 1, None, Seq.empty, Seq.empty, "details")
+      new StageInfo(1, 1, 1, "me-stage", 1, None, Seq.empty, Seq.empty, "details")
     assertEquals(expectedStageInfo, JsonProtocol.stageInfoFromJson(oldStageInfo))
   }
 
@@ -777,7 +777,7 @@ private[spark] object JsonProtocolSuite extends Assertions {
   private def makeStageInfo(a: Int, b: Int, c: Int, d: Long, e: Long) = {
     val rddInfos = (0 until a % 5).map { i => makeRddInfo(a + i, b + i, c + i, d + i, e + i) }
     val stageInfo =
-      new StageInfo(a, 0, "greetings", b, None, rddInfos, Seq(100, 200, 300), "details")
+      new StageInfo(a, 0, 0, "greetings", b, None, rddInfos, Seq(100, 200, 300), "details")
     val (acc1, acc2) = (makeAccumulableInfo(1), makeAccumulableInfo(2))
     stageInfo.accumulables(acc1.id) = acc1
     stageInfo.accumulables(acc2.id) = acc2

@@ -97,6 +97,10 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
     this
   }
 
+  def setRepartitioning(factory: String): SparkConf = {
+    set("spark.repartitioning.factory", factory)
+  }
+
   /**
    * The master URL to connect to, such as "local" to run locally with one thread, "local[4]" to
    * run locally with 4 cores, or "spark://master:7077" to run on a Spark standalone cluster.

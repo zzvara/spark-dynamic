@@ -20,15 +20,13 @@ package org.apache.spark.util
 import java.util.{Properties, UUID}
 
 import scala.collection.JavaConverters._
-import scala.collection.Map
-
+import scala.collection.{Map, mutable}
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.json4s.DefaultFormats
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
-
 import org.apache.spark._
 import org.apache.spark.executor._
 import org.apache.spark.rdd.RDDOperationScope
@@ -570,11 +568,11 @@ private[spark] object JsonProtocol {
     // The "Stage Infos" field was added in Spark 1.2.0
     val stageInfos = Utils.jsonOption(json \ "Stage Infos")
       .map(_.extract[Seq[JValue]].map(stageInfoFromJson)).getOrElse {
-        stageIds.map { id =>
-          new StageInfo(id, 0, "unknown", 0, None, Seq.empty, Seq.empty, "unknown")
-        }
+        stageIds.map(id => new StageInfo(id, 0, 0, "unknown",
+          0, None, Seq.empty, Seq.empty, "unknown"))
       }
-    SparkListenerJobStart(jobId, submissionTime, stageInfos, properties)
+    SparkListenerJobStart(jobId, submissionTime, stageInfos, properties,
+      mutable.Map[String, Any]())
   }
 
   def jobEndFromJson(json: JValue): SparkListenerJobEnd = {
@@ -664,6 +662,7 @@ private[spark] object JsonProtocol {
 
   def stageInfoFromJson(json: JValue): StageInfo = {
     val stageId = (json \ "Stage ID").extract[Int]
+    val jobId = (json \ "Job ID").extract[Int]
     val attemptId = (json \ "Stage Attempt ID").extractOpt[Int].getOrElse(0)
     val stageName = (json \ "Stage Name").extract[String]
     val shuffleId = (json \ "Shuffle ID").extract[Int]
@@ -682,7 +681,7 @@ private[spark] object JsonProtocol {
     }
 
     val stageInfo = new StageInfo(
-      stageId, attemptId, stageName, numTasks, Some(shuffleId), rddInfos, parentIds, details)
+      stageId, jobId, attemptId, stageName, numTasks, Some(shuffleId), rddInfos, parentIds, details)
     stageInfo.submissionTime = submissionTime
     stageInfo.completionTime = completionTime
     stageInfo.failureReason = failureReason

@@ -23,6 +23,8 @@ import org.apache.spark.TaskState
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.annotation.DeveloperApi
 
+import scala.collection.mutable
+
 /**
  * :: DeveloperApi ::
  * Information about a running task attempt inside a TaskSet.
@@ -40,7 +42,8 @@ class TaskInfo(
     val executorId: String,
     val host: String,
     val taskLocality: TaskLocality.TaskLocality,
-    val speculative: Boolean) {
+    val speculative: Boolean,
+    val stageProperties: Option[mutable.Map[String, Any]] = None) {
 
   /**
    * The time when the task started remotely getting the result. Will not be set if the

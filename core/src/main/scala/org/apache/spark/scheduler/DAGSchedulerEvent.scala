@@ -20,10 +20,12 @@ package org.apache.spark.scheduler
 import java.util.Properties
 
 import scala.language.existentials
-
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.{AccumulatorV2, CallSite}
+
+import scala.collection.immutable.HashMap
+import scala.collection.mutable
 
 /**
  * Types of events that can be handled by the DAGScheduler. The DAGScheduler uses an event queue
@@ -41,7 +43,8 @@ private[scheduler] case class JobSubmitted(
     partitions: Array[Int],
     callSite: CallSite,
     listener: JobListener,
-    properties: Properties = null)
+    properties: Properties = null,
+    jobProperties: mutable.Map[String, Any])
   extends DAGSchedulerEvent
 
 /** A map stage as submitted to run as a separate job */

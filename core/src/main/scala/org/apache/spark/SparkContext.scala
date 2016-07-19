@@ -1856,7 +1856,8 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
       rdd: RDD[T],
       func: (TaskContext, Iterator[T]) => U,
       partitions: Seq[Int],
-      resultHandler: (Int, U) => Unit): Unit = {
+      resultHandler: (Int, U) => Unit,
+      properties: Option[HashMap[String, Any]]): Unit = {
     if (stopped.get()) {
       throw new IllegalStateException("SparkContext has been shutdown")
     }
@@ -1866,7 +1867,8 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
     if (conf.getBoolean("spark.logLineage", false)) {
       logInfo("RDD's recursive dependencies:\n" + rdd.toDebugString)
     }
-    dagScheduler.runJob(rdd, cleanedFunc, partitions, callSite, resultHandler, localProperties.get)
+    dagScheduler.runJob(rdd, cleanedFunc, partitions, callSite,
+      resultHandler, localProperties.get, properties)
     progressBar.foreach(_.finishAll())
     rdd.doCheckpoint()
   }
@@ -1877,9 +1879,10 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
   def runJob[T, U: ClassTag](
       rdd: RDD[T],
       func: (TaskContext, Iterator[T]) => U,
-      partitions: Seq[Int]): Array[U] = {
+      partitions: Seq[Int],
+      properties: Option[HashMap[String, Any]]): Array[U] = {
     val results = new Array[U](partitions.size)
-    runJob[T, U](rdd, func, partitions, (index, res) => results(index) = res)
+    runJob[T, U](rdd, func, partitions, (index, res) => results(index) = res, properties)
     results
   }
 
@@ -1890,23 +1893,33 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
   def runJob[T, U: ClassTag](
       rdd: RDD[T],
       func: Iterator[T] => U,
-      partitions: Seq[Int]): Array[U] = {
+      partitions: Seq[Int],
+      properties: Option[HashMap[String, Any]]): Array[U] = {
     val cleanedFunc = clean(func)
-    runJob(rdd, (ctx: TaskContext, it: Iterator[T]) => cleanedFunc(it), partitions)
+    runJob(rdd, (ctx: TaskContext, it: Iterator[T]) => cleanedFunc(it), partitions, properties)
+  }
+
+  def runJob[T, U: ClassTag](
+    rdd: RDD[T],
+    func: Iterator[T] => U,
+    partitions: Seq[Int]): Array[U] = {
+    runJob(rdd, func, partitions, None)
   }
 
   /**
    * Run a job on all partitions in an RDD and return the results in an array.
    */
   def runJob[T, U: ClassTag](rdd: RDD[T], func: (TaskContext, Iterator[T]) => U): Array[U] = {
-    runJob(rdd, func, 0 until rdd.partitions.length)
+    runJob(rdd, func, rdd.partitions.indices, None)
   }
 
   /**
    * Run a job on all partitions in an RDD and return the results in an array.
    */
-  def runJob[T, U: ClassTag](rdd: RDD[T], func: Iterator[T] => U): Array[U] = {
-    runJob(rdd, func, 0 until rdd.partitions.length)
+  def runJob[T, U: ClassTag](rdd: RDD[T],
+                             func: Iterator[T] => U,
+                             properties: Option[HashMap[String, Any]]): Array[U] = {
+    runJob(rdd, func, rdd.partitions.indices, properties)
   }
 
   /**
@@ -1917,7 +1930,7 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
     processPartition: (TaskContext, Iterator[T]) => U,
     resultHandler: (Int, U) => Unit)
   {
-    runJob[T, U](rdd, processPartition, 0 until rdd.partitions.length, resultHandler)
+    runJob[T, U](rdd, processPartition, 0 until rdd.partitions.length, resultHandler, None)
   }
 
   /**
@@ -1929,7 +1942,7 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
       resultHandler: (Int, U) => Unit)
   {
     val processFunc = (context: TaskContext, iter: Iterator[T]) => processPartition(iter)
-    runJob[T, U](rdd, processFunc, 0 until rdd.partitions.length, resultHandler)
+    runJob[T, U](rdd, processFunc, 0 until rdd.partitions.length, resultHandler, None)
   }
 
   /**
@@ -1973,7 +1986,8 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
       partitions,
       callSite,
       resultHandler,
-      localProperties.get)
+      localProperties.get,
+      rdd.getProperties)
     new SimpleFutureAction(waiter, resultFunc)
   }
 

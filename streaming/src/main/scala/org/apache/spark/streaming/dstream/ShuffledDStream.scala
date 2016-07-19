@@ -29,7 +29,7 @@ class ShuffledDStream[K: ClassTag, V: ClassTag, C: ClassTag](
     createCombiner: V => C,
     mergeValue: (C, V) => C,
     mergeCombiner: (C, C) => C,
-    partitioner: Partitioner,
+    var partitioner: Partitioner,
     mapSideCombine: Boolean = true
   ) extends DStream[(K, C)] (parent.ssc) {
 

@@ -167,6 +167,8 @@ class StreamingContext private[streaming] (
 
   private val nextInputStreamId = new AtomicInteger(0)
 
+  private val nextOutputStreamId = new AtomicInteger(0)
+
   private[streaming] var checkpointDir: String = {
     if (isCheckpointPresent) {
       sc.setCheckpointDir(_cp.checkpointDir)
@@ -209,6 +211,11 @@ class StreamingContext private[streaming] (
   private var shutdownHookRef: AnyRef = _
 
   conf.getOption("spark.streaming.checkpoint.directory").foreach(checkpoint)
+
+  private val nextDStreamId = new AtomicInteger(0)
+
+  /** Register a new DStream, returning its DStream ID */
+  private[spark] def newDStreamId(): Int = nextDStreamId.getAndIncrement()
 
   /**
    * Return the associated Spark context
@@ -254,6 +261,8 @@ class StreamingContext private[streaming] (
   }
 
   private[streaming] def getNewInputStreamId() = nextInputStreamId.getAndIncrement()
+
+  private[streaming] def getNewOutputStreamId() = nextOutputStreamId.getAndIncrement()
 
   /**
    * Execute a block of code in a scope such that all new DStreams created in this body will
@@ -834,7 +843,8 @@ object StreamingContext extends Logging {
   def jarOfClass(cls: Class[_]): Option[String] = SparkContext.jarOfClass(cls)
 
   private[streaming] def createNewSparkContext(conf: SparkConf): SparkContext = {
-    new SparkContext(conf)
+    new SparkContext(conf.setRepartitioning(
+      "org.apache.spark.streaming.repartitioning.StreamingRepartitioningTrackerFactory"))
   }
 
   private[streaming] def createNewSparkContext(
@@ -846,7 +856,8 @@ object StreamingContext extends Logging {
     ): SparkContext = {
     val conf = SparkContext.updatedConf(
       new SparkConf(), master, appName, sparkHome, jars, environment)
-    new SparkContext(conf)
+    new SparkContext(conf.setRepartitioning(
+      "org.apache.spark.streaming.repartitioning.StreamingRepartitioningTrackerFactory"))
   }
 
   private[streaming] def rddToFileName[T](prefix: String, suffix: String, time: Time): String = {

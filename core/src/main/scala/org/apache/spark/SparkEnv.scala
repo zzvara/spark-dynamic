@@ -302,8 +302,18 @@ object SparkEnv extends Logging {
       new MapOutputTrackerMasterEndpoint(
         rpcEnv, mapOutputTracker.asInstanceOf[MapOutputTrackerMaster], conf))
 
+
+    val repartitioningFactoryClass
+      = Utils.classForName(conf.get(
+          "spark.repartitioning.factory",
+          "org.apache.spark.CoreRepartitioningTrackerFactory")
+        ).asInstanceOf[Class[RepartitioningTrackerFactory]].newInstance()
+
+    logInfo(s"Repartitioning factory class is ${repartitioningFactoryClass.getClass.getName}.")
+
     val repartitioningTracker = if (isDriver) {
-      val repartitioningTrackerMaster = new RepartitioningTrackerMaster(rpcEnv, conf)
+      val repartitioningTrackerMaster =
+        repartitioningFactoryClass.createMaster(rpcEnv, conf)
 
       repartitioningTrackerMaster.master =
         registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,
@@ -317,7 +327,8 @@ object SparkEnv extends Logging {
 
       repartitioningTrackerMaster
     } else {
-      val repartitioningTrackerWorker = new RepartitioningTrackerWorker(rpcEnv, conf, executorId)
+      val repartitioningTrackerWorker =
+        repartitioningFactoryClass.createWorker(rpcEnv, conf, executorId)
 
       repartitioningTrackerWorker.master
         = registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,

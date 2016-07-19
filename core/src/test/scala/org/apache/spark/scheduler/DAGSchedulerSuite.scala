@@ -1638,7 +1638,8 @@ class DAGSchedulerSuite extends SparkFunSuite with LocalSparkContext with Timeou
         // For a robust test assertion, limit number of job tasks to 1; that is,
         // if multiple RDD partitions, use id of any one partition, say, first partition id=0
         Seq(0),
-        (part: Int, result: Int) => throw new DAGSchedulerSuiteDummyException)
+        (part: Int, result: Int) => throw new DAGSchedulerSuiteDummyException,
+        None)
     }
     assert(e.getCause.isInstanceOf[DAGSchedulerSuiteDummyException])
 

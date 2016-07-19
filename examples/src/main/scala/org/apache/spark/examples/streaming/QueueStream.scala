@@ -26,8 +26,6 @@ import org.apache.spark.streaming.{Seconds, StreamingContext}
 object QueueStream {
 
   def main(args: Array[String]) {
-
-    StreamingExamples.setStreamingLogLevels()
     val sparkConf = new SparkConf().setAppName("QueueStream")
     // Create the context
     val ssc = new StreamingContext(sparkConf, Seconds(1))

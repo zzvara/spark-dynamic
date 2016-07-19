@@ -59,6 +59,7 @@ private[ui] class JobPage(parent: JobsTab) extends WebUIPage("job") {
   private def makeStageEvent(stageInfos: Seq[StageInfo]): Seq[String] = {
     stageInfos.map { stage =>
       val stageId = stage.stageId
+      val jobId = stage.jobId
       val attemptId = stage.attemptId
       val name = stage.name
       val status = stage.getStatusString
@@ -207,7 +208,7 @@ private[ui] class JobPage(parent: JobsTab) extends WebUIPage("job") {
         // This could be empty if the JobProgressListener hasn't received information about the
         // stage or if the stage information has been garbage collected
         listener.stageIdToInfo.getOrElse(stageId,
-          new ShuffleStageInfo(stageId, 0, "Unknown", 0, None, Seq.empty, Seq.empty, "Unknown"))
+          new ShuffleStageInfo(stageId, jobId, 0, "Unknown", 0, None, Seq.empty, Seq.empty, "Unknown"))
       }
 
       val activeStages = Buffer[StageInfo]()

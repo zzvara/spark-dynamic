@@ -32,6 +32,7 @@ import org.apache.spark.storage.RDDInfo
 @DeveloperApi
 class StageInfo(
     val stageId: Int,
+    val jobId: Int,
     val attemptId: Int,
     val name: String,
     val numTasks: Int,
@@ -76,6 +77,7 @@ class StageInfo(
 @DeveloperApi
 class ShuffleStageInfo(
     stageId: Int,
+    jobId: Int,
     attemptId: Int,
     name: String,
     numTasks: Int,
@@ -85,12 +87,13 @@ class ShuffleStageInfo(
     details: String,
     taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty,
     partitioner: Option[Partitioner] = None)
-  extends StageInfo(stageId, attemptId, name, numTasks, shuffleId, rddInfos,
+  extends StageInfo(stageId, jobId, attemptId, name, numTasks, shuffleId, rddInfos,
     parentIds, details, taskLocalityPreferences, partitioner)
 
 @DeveloperApi
 class ResultStageInfo(
     stageId: Int,
+    jobId: Int,
     attemptId: Int,
     name: String,
     numTasks: Int,
@@ -100,7 +103,7 @@ class ResultStageInfo(
     details: String,
     taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty,
     partitioner: Option[Partitioner] = None)
-  extends StageInfo(stageId, attemptId, name, numTasks, shuffleId, rddInfos,
+  extends StageInfo(stageId, jobId, attemptId, name, numTasks, shuffleId, rddInfos,
     parentIds, details, taskLocalityPreferences, partitioner)
 
 private[spark] object StageInfo {
@@ -128,6 +131,7 @@ private[spark] object StageInfo {
       case s : ShuffleMapStage =>
         new ShuffleStageInfo(
           stage.id,
+          stage.firstJobId,
           attemptId,
           stage.name,
           numTasks.getOrElse(stage.numTasks),
@@ -141,6 +145,7 @@ private[spark] object StageInfo {
       case s : ResultStage =>
         new ResultStageInfo(
           stage.id,
+          stage.firstJobId,
           attemptId,
           stage.name,
           numTasks.getOrElse(stage.numTasks),
