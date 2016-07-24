@@ -3,22 +3,36 @@ package org.apache.spark.streaming.repartitioning
 
 import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark._
+import org.apache.spark.executor.RepartitioningInfo
 import org.apache.spark.executor.ShuffleWriteMetrics._
+import org.apache.spark.rdd.RDD
 import org.apache.spark.rpc.RpcEnv
-import org.apache.spark.scheduler.{SparkListenerJobEnd, SparkListenerJobStart, SparkListenerTaskEnd, TaskInfo}
+import org.apache.spark.scheduler._
 import org.apache.spark.streaming.StreamingContext
-import org.apache.spark.streaming.dstream.{DStream, ShuffledDStream}
+import org.apache.spark.streaming.dstream.{DStream, ShuffledDStream, Stream}
 
 import scala.collection.mutable
 import scala.collection.mutable.{Map, Set}
 
 
+/**
+  *
+  * @param streamID Stream is identified by the output DStream ID.
+  * @param relatedJobs Mini-batches which has been spawned by this stream.
+  * @param parentDStreams All the parent DStreams of the output DStream.
+  */
 case class MasterStreamData(
     streamID: Int,
     relatedJobs: Set[Int] = Set[Int](),
     parentDStreams: scala.collection.immutable.Set[Int]
-      = scala.collection.immutable.Set[Int]()
-) {
+      = scala.collection.immutable.Set[Int]())
+{
+  /**
+    * Deciders, which are StreamingStrategies by default for each
+    * inner stage. Stages are identified in a lazy manner when a task finished.
+    * A task holds a corresponding DStream ID, which defines a reoccurring
+    * stage in a mini-batch.
+    */
   val strategies: Map[Int, Decider] =
     Map[Int, Decider]()
 
@@ -32,6 +46,11 @@ case class MasterStreamData(
   }
 }
 
+case class MasterJobData(
+  jobID: Int,
+  stream: Stream)
+
+
 private[spark] class StreamingRepartitioningTrackerMaster(
   override val rpcEnv: RpcEnv,
   conf: SparkConf)
@@ -44,18 +63,16 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
   /**
     * For streaming mini-batches only.
     *
-    * @todo This is where the decision should be!
-    * @hint Use the DStreamGraph from StreamingContext to look up the DStream
-    *       and change the partitioner. (Search for a ShuffledDStream. This is the
-    *       only DStream that has a partitioner! Partitioner is used for the underlying
-    *       RDD. Partitioner should be changed!) That's all folks!
+    * We use the DStreamGraph from StreamingContext to look up the DStream
+    * and change the partitioner.
     */
   override def onJobEnd(jobEnd: SparkListenerJobEnd): Unit = {
-    logInfo("Job end detected!")
+    logInfo(s"Job end detected with job ID ${jobEnd.jobId}!")
     _jobData.get(jobEnd.jobId).foreach { masterJobData =>
-      logInfo("Job finished is a part of a streaming job.")
+      logInfo("Job finished is a part of a streaming job with stream ID " +
+              s"${masterJobData.stream.ID}.")
 
-      val streamData = _streamData.getOrElse(masterJobData.streamID,
+      val streamData = _streamData.getOrElse(masterJobData.stream.ID,
         throw new SparkException("Streaming data is malformed!"))
 
       streamData.strategies.foreach {
@@ -64,7 +81,21 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
     }
   }
 
+  /**
+    * Job properties are set to streaming when an output stream
+    * generates the job. For example ForeachDStream.
+    *
+    * If this is the first mini-batch for a stream, the MasterStreamData
+    * is created alongside with the job data, do be able to link a job
+    * to a specific stream later on, when the mini-batch finishes.
+    *
+    * Streaming stategies are also sent around to workers.
+    */
   override def onJobStart(jobStart: SparkListenerJobStart): Unit = {
+    /**
+      * Finds the dependencies of a set of DStreams recursively.
+      * Returns with a set of DStreams found.
+      */
     def getDependenciesReqursively(streams: scala.collection.immutable.Set[DStream[_]]):
       scala.collection.immutable.Set[DStream[_]] =
     {
@@ -75,17 +106,20 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
       }
     }
 
-    val streamProperties = Some(jobStart.jobProperties).filter {
-      properties =>
-        properties.contains("type") &&
-          properties.get("type").get.asInstanceOf[String] == "streaming"
-    }
+    /**
+      * Job properties should be set by the RDD's properties on job submission.
+      * A property "stream" should be present if it has been submitted by the
+      * Spark Streaming module.
+      */
+    val streamProperties = jobStart.jobProperties.get("stream")
     if (streamProperties.isDefined) {
-      val streamID = streamProperties.get
-        .getOrElse("dstream_id",
-          throw new SparkException("Job type is streaming, but DStream ID is missing."))
-        .asInstanceOf[Int]
-      logInfo(s"Job detected as a mini-batch for DStream with ID $streamID.")
+      val stream = streamProperties.get.asInstanceOf[Stream]
+      logInfo(s"Job detected as a mini-batch for DStream with ID ${stream.ID}.")
+      val streamID = stream.ID
+
+      /**
+        * This is the first time the stream is identified from a job.
+        */
       if (!_streamData.contains(streamID)) {
         logInfo(s"Registering stream with DStream ID $streamID.")
 
@@ -95,40 +129,58 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
           ).map(_.id)
 
         _streamData.update(streamID,
-          new MasterStreamData(streamID, Set[Int](jobStart.jobId), parentStreams))
+          MasterStreamData(streamID, Set[Int](jobStart.jobId), parentStreams))
         _jobData.update(jobStart.jobId,
-          new MasterJobData(jobStart.jobId, streamID))
+          MasterJobData(jobStart.jobId, stream))
 
-        val scanStrategy = new StreamingStrategy(streamID)
+        val scanStrategy = new StreamingStrategy(streamID, stream)
         workers.values.foreach(_.reference.send(scanStrategy))
       } else {
         _streamData.update(streamID, {
-          _streamData.get(streamID).get.addJob(jobStart.jobId)
+          _streamData(streamID).addJob(jobStart.jobId)
         })
+        _jobData.update(jobStart.jobId, MasterJobData(jobStart.jobId, stream))
       }
     } else {
       logInfo(s"Regular job start detected, with ID ${jobStart.jobId}. " +
-        s"Doing nothing special.")
+              s"Doing nothing special.")
+    }
+  }
+
+  override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {
+    this.synchronized {
+      if (!stageSubmitted.stageInfo.rddInfos.head.properties.contains("stream")) {
+        super.onStageSubmitted(stageSubmitted)
+      }
+    }
+  }
+
+  override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {
+    this.synchronized {
+      if (!stageCompleted.stageInfo.rddInfos.head.properties.contains("stream")) {
+        super.onStageCompleted(stageCompleted)
+      }
     }
   }
 
   def updateLocalHistogramForStreaming(
-    streamID: Int,
+    stream: Stream,
     taskInfo: TaskInfo,
     dataCharacteristics: DataCharacteristics[Any]
   ): Unit = {
-    _streamData.find { _._2.hasParent(streamID) } match {
+    _streamData.find { _._2.hasParent(stream.ID) } match {
       case Some((sID, streamData)) =>
-        logInfo("Updating local histogram.")
+        logInfo(s"Updating local histogram for task ${taskInfo.taskId} " +
+                s"in stream ${stream.ID} with output stream ID $sID.")
         streamData.strategies.getOrElseUpdate(
-          streamID, new StreamingStrategy(streamID)
+          stream.ID, new StreamingStrategy(stream.ID, stream)
         ).onHistogramArrival(taskInfo.index,
           dataCharacteristics.toInfo(None, Some(dataCharacteristics.value),
             Some(dataCharacteristics.param)))
       case None => logWarning(
         s"Could not update local histogram for streaming," +
         s" since streaming data does not exist for DStream" +
-        s" ID $streamID!")
+        s" ID ${stream.ID}!")
     }
   }
 
@@ -151,22 +203,29 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
     */
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
     this.synchronized {
-      taskEnd.taskInfo.stageProperties.flatMap(_.get("dstream_id")) match {
-        case Some(dstreamID) =>
-          logInfo(s"Task ended with DStream ID of $dstreamID.")
-          taskEnd.taskMetrics.shuffleWriteMetrics match {
-            case Some(shuffleWriteMetrics) =>
-              val size = shuffleWriteMetrics.dataCharacteristics.value.size
-              logInfo(s"DataCharacteristics size is $size.")
-              updateLocalHistogramForStreaming(
-                dstreamID.asInstanceOf[Int],
-                taskEnd.taskInfo,
-                shuffleWriteMetrics.dataCharacteristics)
-            case None =>
-              logWarning(s"No ShuffleWriteMetrics for task ${taskEnd.taskInfo.id}.")
-          }
-        case None =>
-          super.onTaskEnd(taskEnd)
+      if (taskEnd.taskType != "ResultTask") {
+        taskEnd.taskInfo.stageProperties.flatMap(
+          _.get("stream").asInstanceOf[Option[Stream]]
+        ) match {
+          case Some(stream) =>
+            val streamID = stream.ID
+            logInfo(s"Task ended with DStream ID of $streamID.")
+            taskEnd.taskMetrics.shuffleWriteMetrics match {
+              case Some(shuffleWriteMetrics) =>
+                val size = shuffleWriteMetrics.dataCharacteristics.value.size
+                val recordsPassed = shuffleWriteMetrics.dataCharacteristics.param
+                  .asInstanceOf[DataCharacteristicsAccumulatorParam].recordsPassed
+                logInfo(s"DataCharacteristics size is $size with $recordsPassed records passed.")
+                updateLocalHistogramForStreaming(
+                  stream,
+                  taskEnd.taskInfo,
+                  shuffleWriteMetrics.dataCharacteristics)
+              case None =>
+                logWarning(s"No ShuffleWriteMetrics for task ${taskEnd.taskInfo.id}.")
+            }
+          case None =>
+            super.onTaskEnd(taskEnd)
+        }
       }
     }
   }
@@ -176,16 +235,16 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
 /**
   * A simple strategy to decide when and how to repartition a stage.
   */
-class StreamingStrategy(streamID: Int)
+class StreamingStrategy(streamID: Int, stream: Stream)
   extends Decider(streamID)  {
 
   protected var numPartitions: Int = 0
   private var minScale = 1.0d
   private val sCutHint = 0
   private val pCutHint = Math.pow(2, treeDepthHint - 1).toInt
+  private val _perBatchSamplingRate: Int = 5
 
-  logInfo("sCutHint: " + sCutHint + ", pCutHint: " + pCutHint, "strongYellow")
-
+  def perBatchSamplingRate: Int = _perBatchSamplingRate
   /**
     * Called by the RepartitioningTrackerMaster if new histogram arrives
     * for this particular job's strategy.
@@ -205,6 +264,10 @@ class StreamingStrategy(streamID: Int)
     * partitioning function and sends the strategy to each worker.
     * It asks the RepartitioningTrackerMaster to broadcast the new
     * strategy to workers.
+    *
+    * (Search for a ShuffledDStream. This is the
+    * only DStream that has a partitioner! Partitioner is used for the underlying
+    * RDD. Partitioner should be changed!)
     */
   override def decide(): Boolean = {
     def lookupStreamChildrenReqursively(id: Int, streams: Array[DStream[_]]): Option[DStream[_]] = {
@@ -218,9 +281,14 @@ class StreamingStrategy(streamID: Int)
         }
       }
     }
-    logInfo(s"Deciding if need any repartitioning now.", "DRRepartitioner")
-
+    logInfo(s"Deciding if need any repartitioning now for stream " +
+            s"with ID $streamID.", "DRRepartitioner")
     logInfo(s"Number of received histograms: ${histograms.size}", "strongCyan")
+
+    if (histograms.size < 1) {
+      return false
+    }
+
     val numRecords =
       histograms.values.map(
         _.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam].recordsPassed).sum
@@ -236,14 +304,27 @@ class StreamingStrategy(streamID: Int)
 
     numPartitions = histograms.size
 
+    logInfo(globalHistogram.toString())
+
+    /**
+      * Sanity check on the global histogram.
+      */
+    if (!isValidHistogram(globalHistogram)) {
+      clearHistograms()
+      return false
+    }
+
     val repartitioner = repartition(globalHistogram.take(histograms.size))
+
+    clearHistograms()
 
     lookupStreamChildrenReqursively(streamID,
       StreamingContext.getActive().get.graph.getOutputStreams()) match {
       case Some(dstream) =>
         dstream match {
           case shuffledDStream: ShuffledDStream[_, _, _] =>
-            logInfo(s"Resetting partitioner for DStream with ID $streamID.")
+            logInfo(s"Resetting partitioner for DStream with ID $streamID to partitioner " +
+                    s" ${repartitioner.toString}.")
             shuffledDStream.partitioner = repartitioner
           case _ =>
             throw new SparkException("Not a ShuffledDStream! Sorry.")
@@ -261,7 +342,36 @@ private[spark] class StreamingRepartitioningTrackerWorker(
   conf: SparkConf,
   executorId: String)
 extends RepartitioningTrackerWorker(rpcEnv, conf, executorId) {
+  private val streamData = mutable.HashMap[Int, RepartitioningStreamData]()
 
+  override def receive: PartialFunction[Any, Unit] = {
+    case ScanStrategies(scanStrategies) =>
+      logInfo(s"Received a list of scan strategies, with size of ${scanStrategies.length}.")
+      scanStrategies.foreach {
+        /**
+          * @todo The standalone part should only be in the default tracker.
+          */
+        case StandaloneStrategy(stageID, scanner) =>
+          stageData.put(stageID, new RepartitioningStageData(scanner))
+        case StreamingStrategy(streamID, scanner) =>
+          streamData.put(streamID, new RepartitioningStreamData())
+      }
+    case StreamingStrategy(streamID, scanner) =>
+      // @todo Do something with it.
+      logInfo(s"Received streaming strategy for stream ID $streamID.", "DRCommunication")
+      streamData.put(streamID, new RepartitioningStreamData())
+    case _ => super.receive
+  }
+
+  override def isDataAware(rdd: RDD[_]): Boolean = {
+    if (rdd.getProperties.contains("stream")) {
+      val streamProperty = rdd.getProperties("stream").asInstanceOf[Stream]
+
+      true
+    } else {
+      super.isDataAware(rdd)
+    }
+  }
 }
 
 class StreamingRepartitioningTrackerFactory extends RepartitioningTrackerFactory {

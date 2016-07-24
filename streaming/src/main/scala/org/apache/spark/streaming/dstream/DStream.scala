@@ -357,7 +357,7 @@ abstract class DStream[T: ClassTag] (
             logInfo(s"Marking RDD ${newRDD.id} for time $time for checkpointing")
           }
           generatedRDDs.put(time, newRDD)
-          newRDD.addProperty("dstream_id", id)
+          newRDD.addProperty("stream", new Stream(id, time))
         }
         rddOption
       } else {
@@ -980,3 +980,5 @@ object DStream {
     org.apache.spark.util.Utils.getCallSite(streamingExclustionFunction)
   }
 }
+
+case class Stream(ID: Int, time: Time) extends Serializable

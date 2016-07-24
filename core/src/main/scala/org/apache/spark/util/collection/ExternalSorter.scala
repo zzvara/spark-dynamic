@@ -210,10 +210,10 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
     currentRepartitioningVersion != getVersion
   }
 
-  val taskId = repartitioningInfo.map(_.taskID.toString).getOrElse("unknown")
-  val stageId = repartitioningInfo.map(_.stageID.toString).getOrElse("unknown")
-  val taskInfo = s"stage ${repartitioningInfo.map(_.stageID).getOrElse("unknown")} " +
-                 s"task ${repartitioningInfo.map(_.taskID).getOrElse("unknown")}"
+  val taskId = context.taskAttemptId()
+  val stageId = context.stageId()
+  val taskInfo = s"stage ${context.stageId()} " +
+                 s"task ${context.taskAttemptId()}"
 
   updateCurrentVersion()
 
@@ -251,17 +251,23 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
     } else {
       currentIterator =
         if (SparkEnv.get.conf.getBoolean("spark.shuffle.write.data-characteristics", true)) {
-          logInfo("Recording data characteristics of shuffle write.")
-          if (DataCharacteristicsAccumulatorParam.isWeightable[V]()) {
-            logInfo("Values are weightable, going to use WeightedDataCharacteristicsIterator.")
-            new WeightedDataCharacteristicsIterator[K, V with Weightable](
-              records.asInstanceOf[Iterator[Product2[K, V with Weightable]]],
-              shuffleWriteMetrics)
+          if (!context.isDataAware()) {
+            logInfo(s"Context has switched off data-awareness " +
+                    s"for task with attempt ID ${context.taskAttemptId()}.")
+            records
           } else {
-            logInfo(s"Values are not weightable (${
-                      DataCharacteristicsAccumulatorParam.className[V]()
-                    }), going to use default DataCharacteristicsIterator.")
-            new DataCharacteristicsIterator[K, V](records, shuffleWriteMetrics)
+            logInfo("Recording data characteristics of shuffle write.")
+            if (DataCharacteristicsAccumulatorParam.isWeightable[V]()) {
+              logInfo("Values are weightable, going to use WeightedDataCharacteristicsIterator.")
+              new WeightedDataCharacteristicsIterator[K, V with Weightable](
+                records.asInstanceOf[Iterator[Product2[K, V with Weightable]]],
+                shuffleWriteMetrics)
+            } else {
+              logInfo(s"Values are not weightable (${
+                DataCharacteristicsAccumulatorParam.className[V]()
+              }), going to use default DataCharacteristicsIterator.")
+              new DataCharacteristicsIterator[K, V](records, shuffleWriteMetrics)
+            }
           }
         } else {
           records

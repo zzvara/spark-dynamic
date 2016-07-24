@@ -74,6 +74,13 @@ private[spark] class ShuffleMapTask(
 
     var writer: ShuffleWriter[Any, Any] = null
     try {
+      val isDataAware =
+        SparkEnv.get.repartitioningWorker()
+          .asInstanceOf[RepartitioningTrackerWorker]
+          .isDataAware(rdd)
+
+      context.setDataAwareness(isDataAware)
+
       val manager = SparkEnv.get.shuffleManager
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
       logInfo(s"Running task for partition $partition and RDD $rdd, dependency $dep")

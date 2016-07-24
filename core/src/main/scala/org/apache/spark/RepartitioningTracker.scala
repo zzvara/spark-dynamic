@@ -21,13 +21,13 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark.executor.{RepartitioningInfo, ShuffleWriteMetrics}
-import org.apache.spark.executor.ShuffleWriteMetrics.{DataCharacteristics, DataCharacteristicsInfo}
+import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristicsInfo
 import org.apache.spark.internal.{ColorfulLogging, Logging}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.rpc._
 import org.apache.spark.scheduler._
 import org.apache.spark.util.{TaskCompletionListener, ThreadUtils}
 
-import scala.collection.mutable
 import scala.collection.mutable.{Map, _}
 import scala.reflect.ClassTag
 import scala.util.hashing.MurmurHash3
@@ -47,6 +47,9 @@ private[spark] case class ShuffleWriteStatus[T: ClassTag](
   partitionID: Int,
   keyHistogram: DataCharacteristicsInfo) extends RepartitioningTrackerMessage
 
+/**
+  * @todo Not used currently.
+  */
 private[spark] case class FinalHistogram[T](
   stageID: Int,
   taskID: Long,
@@ -111,9 +114,7 @@ case class MasterStageData(
   mode: RepartitioningModes.Value,
   scanStrategy: StandaloneStrategy)
 
-case class MasterJobData(
-  jobID: Int,
-  streamID: Int)
+case class RepartitioningStreamData()
 
 case class RepartitioningStageData(
   var scannerPrototype: ScannerPrototype,
@@ -396,9 +397,7 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
                                                  executorId: String)
   extends RepartitioningTracker(conf) with RpcEndpoint with ColorfulLogging {
 
-  private val stageData = HashMap[Int, RepartitioningStageData]()
-
-  private val streamData = HashMap[Int, RepartitioningStageData]()
+  protected val stageData = HashMap[Int, RepartitioningStageData]()
   /**
     * @todo Use this thread pool to instantiate scanners.
     */
@@ -516,15 +515,13 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
       scanStrategies.foreach {
         case StandaloneStrategy(stageID, scanner) =>
           stageData.put(stageID, new RepartitioningStageData(scanner))
-        case StreamingStrategy(streamID, scanner) =>
-          streamData.put(streamID, new RepartitioningStageData(scanner))
       }
     case ShutDownScanners(stageID) =>
       logInfo(s"Stopping scanners for stage $stageID on executor $executorId.",
         "DRCommunication", "cyan")
       stopScanners(stageID)
     case ClearStageData(stageID) =>
-      logInfo(s"Clearing stage data for stage $stageID on" +
+      logInfo(s"Clearing stage data for stage $stageID on " +
               s"executor $executorId.", "DRCommunication", "cyan")
       clearStageData(stageID)
   }
@@ -573,6 +570,10 @@ private[spark] class RepartitioningTrackerWorker(override val rpcEnv: RpcEnv,
         stageData.remove(stageID)
       case None =>
     }
+  }
+
+  def isDataAware(rdd: RDD[_]): Boolean = {
+    true
   }
 }
 
@@ -724,8 +725,8 @@ abstract class Decider(stageID: Int) extends ColorfulLogging with Serializable {
           / Int.MaxValue + 1) / 2)
     )
 
-    logDebug("Partitioner created, simulating run with global histogram.")
-    logDebug(globalHistogram.toString())
+    logInfo("Partitioner created, simulating run with global histogram.")
+    logInfo(globalHistogram.toString())
     sortedKeys.foreach {
       key => logInfo(s"Key $key went to ${repartitioner.getPartition(key)}.")
     }
@@ -733,9 +734,23 @@ abstract class Decider(stageID: Int) extends ColorfulLogging with Serializable {
     logInfo(s"Decided to repartition stage $stageID.", "DRRepartitioner")
     currentVersion += 1
 
-    logInfo(s"Sending repartitioning strategy.", "DRCommunication", "DRRepartitioner")
-
     repartitioner
+  }
+
+  protected def isValidHistogram(histogram: scala.collection.Seq[(Any, Double)]): Boolean = {
+    if (histogram.size < 2) {
+      logWarning(s"Histogram size is ${histogram.size}.")
+      false
+    } else if (!histogram.forall(!_._2.isInfinity)) {
+      logWarning(s"There is an infinite value in the histogram!")
+      false
+    } else {
+      true
+    }
+  }
+
+  protected def clearHistograms(): Unit = {
+    histograms.clear()
   }
 }
 

@@ -154,7 +154,7 @@ abstract class RDD[T: ClassTag](
     properties.put(key, value)
   }
 
-  def getProperties = properties
+  def getProperties: scala.collection.mutable.Map[String, Any] = properties
 
   /** A friendly name for this RDD */
   @transient var name: String = null

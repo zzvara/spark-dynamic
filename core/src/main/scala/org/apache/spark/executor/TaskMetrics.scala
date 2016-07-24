@@ -18,19 +18,19 @@
 package org.apache.spark.executor
 
 import scala.collection.mutable.{ArrayBuffer, LinkedHashMap}
+import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark.status.api.v1.BlockFetchInfo
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristics
 import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler.AccumulableInfo
 import org.apache.spark.storage.{BlockId, BlockStatus}
 import org.apache.spark.util.{AccumulatorContext, AccumulatorMetadata, AccumulatorV2, LongAccumulator}
 import org.apache.spark.storage.{BlockResult, BlockId, BlockStatus}
-
 
 /**
  * :: DeveloperApi ::

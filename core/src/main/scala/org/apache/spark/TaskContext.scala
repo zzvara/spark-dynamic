@@ -78,6 +78,14 @@ object TaskContext {
  * }}}
  */
 abstract class TaskContext extends Serializable {
+  private var _isDataAware = true
+
+  def setDataAwareness(isDataAware: Boolean): Unit = {
+    _isDataAware = isDataAware
+  }
+
+  def isDataAware(): Boolean = _isDataAware
+
   // Note: TaskContext must NOT define a get method. Otherwise it will prevent the Scala compiler
   // from generating a static get method (based on the companion object's get method).
 
@@ -97,7 +105,8 @@ abstract class TaskContext extends Serializable {
 
   /**
    * Returns true if the task is running locally in the driver program.
-   * @return false
+    *
+    * @return false
    */
   @deprecated("Local execution was removed, so this always returns false", "2.0.0")
   def isRunningLocally(): Boolean

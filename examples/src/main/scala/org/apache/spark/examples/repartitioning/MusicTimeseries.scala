@@ -1,8 +1,11 @@
 
 package org.apache.spark.examples.repartitioning
 
-import org.apache.spark.AccumulatorParam.Weightable
-import org.apache.spark.{HashPartitioner, Partitioner, SparkConf, SparkContext}
+import java.util.Properties
+
+import kafka.javaapi.producer.Producer
+import kafka.producer.{KeyedMessage, ProducerConfig}
+import org.apache.spark.{SparkConf, SparkContext}
 
 object MusicTimeseries {
   def main(args: Array[String]) {
@@ -14,37 +17,29 @@ object MusicTimeseries {
     val records =
       context
         .textFile(args(0), args(2).toInt)
-        .map(line => new Record(line.split("""\|""")))
-        .flatMap(record => record.tags.map(t => (t, record)))
-        //.filter(_._1 != -1)
+        .map(line => (new Record(line.split("""\|""")), line))
+        .flatMap(pair => pair._1.tags.map(t => (t, pair._2)))
+        .mapPartitions { iterator =>
 
-    /*
-    val frequencies =
-      records
-        .reduceByKey(_ + _)
-        .sortBy(_._2, false)
-        .take(50)
-        */
+          val props = new Properties()
+          props.put("metadata.broker.list", "localhost:9092")
+          props.put("serializer.class", "kafka.serializer.StringEncoder")
+          props.put("request.required.acks", "1")
 
-    // frequencies foreach println
+          val config = new ProducerConfig(props)
 
-    records.groupByKey(new Partitioner {
-      val hp: HashPartitioner = new HashPartitioner(399)
-      override def numPartitions: Int = 400
-      override def getPartition(key: Any): Int = {
-        if (key.asInstanceOf[Int] == -1) {
-          399
-        } else {
-          hp.getPartition(key)
+          val producer = new Producer[String, String](config)
+
+
+          iterator.foreach { pair =>
+            val data = new KeyedMessage[String, String](
+              "default", pair._1.toString, pair._2)
+            producer.send(data)
+          }
+
+          Iterator.empty
         }
-      }
-    }).map {
-      _._2.map {
-        x => x.complexity()
-      }
-    }.count()
-
-    Thread.sleep(60 * 60 * 1000)
+      .collect()
   }
 }
 
@@ -60,7 +55,7 @@ class Record(
   val subsType: String,
   val artists: Seq[Int],
   val albums: Seq[Int])
-extends Weightable with Serializable {
+extends Serializable {
   def this(split: Array[String]) = {
     this(split(0).toLong,
          split(1).toInt,
@@ -73,8 +68,6 @@ extends Weightable with Serializable {
          split(8).split(",").map(_.toInt),
          split(9).split(",").filter(!_.contains("None")).map(_.toInt))
   }
-
-  override def complexity(): Int = tags.size
 }
 
 /**
