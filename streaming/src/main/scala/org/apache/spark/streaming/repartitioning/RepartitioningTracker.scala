@@ -3,17 +3,25 @@ package org.apache.spark.streaming.repartitioning
 
 import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark._
-import org.apache.spark.executor.RepartitioningInfo
 import org.apache.spark.executor.ShuffleWriteMetrics._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.scheduler._
-import org.apache.spark.streaming.StreamingContext
+import org.apache.spark.streaming.{StreamingContext, Time}
 import org.apache.spark.streaming.dstream.{DStream, ShuffledDStream, Stream}
 
 import scala.collection.mutable
 import scala.collection.mutable.{Map, Set}
 
+
+/**
+  * Scan strategy message sent to workers.
+  */
+private[spark] case class StreamingScanStrategy(
+   streamID: Int,
+   strategy: StreamingStrategy,
+   parentStreams: collection.immutable.Set[Int])
+extends ScanStrategy
 
 /**
   *
@@ -134,7 +142,8 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
           MasterJobData(jobStart.jobId, stream))
 
         val scanStrategy = new StreamingStrategy(streamID, stream)
-        workers.values.foreach(_.reference.send(scanStrategy))
+        workers.values.foreach(
+          _.reference.send(StreamingScanStrategy(streamID, scanStrategy, parentStreams)))
       } else {
         _streamData.update(streamID, {
           _streamData(streamID).addJob(jobStart.jobId)
@@ -229,22 +238,36 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
       }
     }
   }
+
+  /**
+    * Initializes a local worker and asks it to register with this
+    * repartitioning tracker master.
+    */
+  override def initializeLocalWorker(): Unit = {
+    val worker = new StreamingRepartitioningTrackerWorker(rpcEnv, conf, "driver")
+    worker.master = self
+    worker.register()
+    localWorker = Some(worker)
+  }
+
 }
 
 
 /**
   * A simple strategy to decide when and how to repartition a stage.
   */
-class StreamingStrategy(streamID: Int, stream: Stream)
+class StreamingStrategy(streamID: Int,
+                        stream: Stream,
+                        val perBatchSamplingRate: Int = 5)
   extends Decider(streamID)  {
 
   protected var numPartitions: Int = 0
   private var minScale = 1.0d
   private val sCutHint = 0
   private val pCutHint = Math.pow(2, treeDepthHint - 1).toInt
-  private val _perBatchSamplingRate: Int = 5
 
-  def perBatchSamplingRate: Int = _perBatchSamplingRate
+  def zeroTime: Time = stream.time
+
   /**
     * Called by the RepartitioningTrackerMaster if new histogram arrives
     * for this particular job's strategy.
@@ -337,6 +360,11 @@ class StreamingStrategy(streamID: Int, stream: Stream)
   }
 }
 
+case class RepartitioningStreamData(
+  streamID: Int,
+  strategy: StreamingStrategy,
+  parentStreams: collection.immutable.Set[Int])
+
 private[spark] class StreamingRepartitioningTrackerWorker(
   override val rpcEnv: RpcEnv,
   conf: SparkConf,
@@ -345,6 +373,10 @@ extends RepartitioningTrackerWorker(rpcEnv, conf, executorId) {
   private val streamData = mutable.HashMap[Int, RepartitioningStreamData]()
 
   override def receive: PartialFunction[Any, Unit] = {
+    privateReceive orElse super.receive
+  }
+
+  private def privateReceive: PartialFunction[Any, Unit] = {
     case ScanStrategies(scanStrategies) =>
       logInfo(s"Received a list of scan strategies, with size of ${scanStrategies.length}.")
       scanStrategies.foreach {
@@ -352,22 +384,31 @@ extends RepartitioningTrackerWorker(rpcEnv, conf, executorId) {
           * @todo The standalone part should only be in the default tracker.
           */
         case StandaloneStrategy(stageID, scanner) =>
-          stageData.put(stageID, new RepartitioningStageData(scanner))
-        case StreamingStrategy(streamID, scanner) =>
-          streamData.put(streamID, new RepartitioningStreamData())
+          stageData.update(stageID, RepartitioningStageData(scanner))
+        case StreamingScanStrategy(streamID, strategy, parentStreams) =>
+          streamData.update(streamID, RepartitioningStreamData(streamID, strategy, parentStreams))
       }
-    case StreamingStrategy(streamID, scanner) =>
-      // @todo Do something with it.
+    case StreamingScanStrategy(streamID, strategy, parentStreams) =>
       logInfo(s"Received streaming strategy for stream ID $streamID.", "DRCommunication")
-      streamData.put(streamID, new RepartitioningStreamData())
-    case _ => super.receive
+      streamData.update(streamID, RepartitioningStreamData(streamID, strategy, parentStreams))
   }
 
   override def isDataAware(rdd: RDD[_]): Boolean = {
     if (rdd.getProperties.contains("stream")) {
       val streamProperty = rdd.getProperties("stream").asInstanceOf[Stream]
-
-      true
+      streamData.find(_._2.parentStreams.contains(streamProperty.ID)).map(_._2) match {
+        case Some(data) =>
+          val remaining = (streamProperty.time - data.strategy.zeroTime).milliseconds %
+            (streamProperty.batchDuration.milliseconds * data.strategy.perBatchSamplingRate)
+          val isDataAwareForTime = remaining == 0
+          if (isDataAwareForTime) {
+            logInfo(s"RDD is data-aware to time ${streamProperty.time.milliseconds} and stream " +
+                    s"${streamProperty.ID}.")
+          }
+          isDataAwareForTime
+        case None =>
+          false
+      }
     } else {
       super.isDataAware(rdd)
     }

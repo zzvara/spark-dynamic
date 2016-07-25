@@ -67,14 +67,6 @@ private[spark] case class Register(executorID: String, workerReferece: RpcEndpoi
 private[spark] case class StandaloneStrategy(stageID: Int, scanner: ScannerPrototype)
   extends ScanStrategy
 
-/**
-  * Scan strategy message sent to workers.
-  */
-private[spark] case class StreamingStrategy(
-  streamID: Int,
-  scanner: ScannerPrototype)
-extends ScanStrategy
-
 private[spark] class ScanStrategy extends RepartitioningTrackerMessage
 
 private[spark] case class ScanStrategies(scanStrategies: List[ScanStrategy])
@@ -113,8 +105,6 @@ case class MasterStageData(
   strategy: Strategy,
   mode: RepartitioningModes.Value,
   scanStrategy: StandaloneStrategy)
-
-case class RepartitioningStreamData()
 
 case class RepartitioningStageData(
   var scannerPrototype: ScannerPrototype,

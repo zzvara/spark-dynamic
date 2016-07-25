@@ -251,7 +251,7 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
     } else {
       currentIterator =
         if (SparkEnv.get.conf.getBoolean("spark.shuffle.write.data-characteristics", true)) {
-          if (!context.isDataAware()) {
+          if (!context.isDataAware) {
             logInfo(s"Context has switched off data-awareness " +
                     s"for task with attempt ID ${context.taskAttemptId()}.")
             records
