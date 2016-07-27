@@ -259,12 +259,13 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
 class StreamingStrategy(streamID: Int,
                         stream: Stream,
                         val perBatchSamplingRate: Int = 5)
-  extends Decider(streamID)  {
+  extends Decider(streamID) {
 
   protected var numPartitions: Int = 0
   private var minScale = 1.0d
   private val sCutHint = 0
   private val pCutHint = Math.pow(2, treeDepthHint - 1).toInt
+  private val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
 
   def zeroTime: Time = stream.time
 
@@ -337,6 +338,8 @@ class StreamingStrategy(streamID: Int,
       return false
     }
 
+    // partitionerHistory.last.
+
     val repartitioner = repartition(globalHistogram.take(histograms.size))
 
     clearHistograms()
@@ -349,6 +352,7 @@ class StreamingStrategy(streamID: Int,
             logInfo(s"Resetting partitioner for DStream with ID $streamID to partitioner " +
                     s" ${repartitioner.toString}.")
             shuffledDStream.partitioner = repartitioner
+            partitionerHistory :+ repartitioner
           case _ =>
             throw new SparkException("Not a ShuffledDStream! Sorry.")
         }

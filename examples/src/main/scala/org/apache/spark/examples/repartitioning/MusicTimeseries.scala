@@ -30,7 +30,6 @@ object MusicTimeseries {
 
           val producer = new Producer[String, String](config)
 
-
           iterator.foreach { pair =>
             val data = new KeyedMessage[String, String](
               "default", pair._1.toString, pair._2)
