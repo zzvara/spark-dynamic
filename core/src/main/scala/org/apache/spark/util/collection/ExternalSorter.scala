@@ -227,6 +227,7 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
     val startTime = System.nanoTime()
 
     if (shouldCombine) {
+      logInfo("Combiner is set on the map side.")
       // Combine values in-memory first using our AppendOnlyMap
       val mergeValue = aggregator.get.mergeValue
       val createCombiner = aggregator.get.createCombiner
@@ -270,6 +271,7 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
             }
           }
         } else {
+          logInfo("Not recording data characteristics of shuffle write.")
           records
         }
 

@@ -141,7 +141,9 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
         _jobData.update(jobStart.jobId,
           MasterJobData(jobStart.jobId, stream))
 
-        val scanStrategy = new StreamingStrategy(streamID, stream)
+        val scanStrategy = new StreamingStrategy(streamID, stream,
+          SparkEnv.get.conf.getInt(
+            "spark.repartitioning.streaming.per-batch-sampling-rate", 5))
         workers.values.foreach(
           _.reference.send(StreamingScanStrategy(streamID, scanStrategy, parentStreams)))
       } else {
