@@ -58,7 +58,7 @@ class SparkEnv (
     val closureSerializer: Serializer,
     val serializerManager: SerializerManager,
     val mapOutputTracker: MapOutputTracker,
-    val repartitioningTracker: RepartitioningTracker,
+    val repartitioningTracker: Option[RepartitioningTracker],
     val shuffleManager: ShuffleManager,
     val broadcastManager: BroadcastManager,
     val blockManager: BlockManager,
@@ -132,12 +132,12 @@ class SparkEnv (
     }
   }
 
-  def repartitioningWorker(): RepartitioningTrackerWorker = {
+  def repartitioningWorker(): Option[RepartitioningTrackerWorker] = {
     repartitioningTracker match {
-      case master: RepartitioningTrackerMaster =>
-        master.getLocalWorker.get
+      case Some(master: RepartitioningTrackerMaster) =>
+        Some(master.getLocalWorker.get)
       case _ =>
-        repartitioningTracker.asInstanceOf[RepartitioningTrackerWorker]
+        repartitioningTracker.asInstanceOf[Option[RepartitioningTrackerWorker]]
     }
   }
 }
@@ -311,33 +311,39 @@ object SparkEnv extends Logging {
 
     logInfo(s"Repartitioning factory class is ${repartitioningFactoryClass.getClass.getName}.")
 
-    val repartitioningTracker = if (isDriver) {
-      val repartitioningTrackerMaster =
-        repartitioningFactoryClass.createMaster(rpcEnv, conf)
+    val repartitioningTracker =
+      if (conf.getBoolean("spark.repartitioning", true)) {
+        Some(if (isDriver) {
+          val repartitioningTrackerMaster =
+            repartitioningFactoryClass.createMaster(rpcEnv, conf)
 
-      repartitioningTrackerMaster.master =
-        registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,
-          repartitioningTrackerMaster)
+          repartitioningTrackerMaster.master =
+            registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,
+              repartitioningTrackerMaster)
 
-      listenerBus.addListener(repartitioningTrackerMaster)
+          listenerBus.addListener(repartitioningTrackerMaster)
 
-      if (isLocal) {
-        repartitioningTrackerMaster.initializeLocalWorker()
+          if (isLocal) {
+            repartitioningTrackerMaster.initializeLocalWorker()
+          }
+
+          repartitioningTrackerMaster
+        } else {
+          val repartitioningTrackerWorker =
+            repartitioningFactoryClass.createWorker(rpcEnv, conf, executorId)
+
+          repartitioningTrackerWorker.master
+            = registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,
+            repartitioningTrackerWorker.asInstanceOf[RepartitioningTrackerMaster])
+
+          repartitioningTrackerWorker.register()
+
+          repartitioningTrackerWorker
+        })
+      } else {
+        logInfo("Repartitioning is switched off.")
+        None
       }
-
-      repartitioningTrackerMaster
-    } else {
-      val repartitioningTrackerWorker =
-        repartitioningFactoryClass.createWorker(rpcEnv, conf, executorId)
-
-      repartitioningTrackerWorker.master
-        = registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,
-        repartitioningTrackerWorker.asInstanceOf[RepartitioningTrackerMaster])
-
-      repartitioningTrackerWorker.register()
-
-      repartitioningTrackerWorker
-    }
 
     // Let the user specify short names for shuffle managers
     val shortShuffleMgrNames = Map(

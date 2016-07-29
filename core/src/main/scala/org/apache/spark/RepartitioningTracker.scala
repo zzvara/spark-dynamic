@@ -656,7 +656,7 @@ class Throughput(override val totalSlots: Int) extends Scanner(totalSlots) {
                     s"processed to send the histogram to the driver.", "DRHistogram")
           } else {
             lastHistogramHeight = histogramMeta.recordsPassed
-            SparkEnv.get.repartitioningWorker()
+            SparkEnv.get.repartitioningWorker().get
               .sendHistogram(
                 taskContext.stageId(),
                 taskContext.taskAttemptId(),

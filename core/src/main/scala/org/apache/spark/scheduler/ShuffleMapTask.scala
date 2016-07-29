@@ -75,9 +75,11 @@ private[spark] class ShuffleMapTask(
     var writer: ShuffleWriter[Any, Any] = null
     try {
       val isDataAware =
-        SparkEnv.get.repartitioningWorker()
-          .asInstanceOf[RepartitioningTrackerWorker]
-          .isDataAware(rdd)
+        SparkEnv.get.repartitioningWorker() match {
+          case Some(repartitioningTrackerWorker) =>
+            repartitioningTrackerWorker.isDataAware(rdd)
+          case None => false
+        }
 
       context.setDataAwareness(isDataAware)
 

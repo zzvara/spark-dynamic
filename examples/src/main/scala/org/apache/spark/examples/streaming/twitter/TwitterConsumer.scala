@@ -11,11 +11,14 @@ import twitter4j.Status
 
 object TwitterConsumer {
   def main(args: Array[String]) {
+    val batchDuration = args(3).toInt
+    val reducerLoad = args(4).toDouble
+
     val sparkConf = new SparkConf()
       .setAppName("Streaming Twitter Consumer")
       .setJars(Seq(args(1)))
     // Create the context
-    val ssc = new StreamingContext(sparkConf, Seconds(1))
+    val ssc = new StreamingContext(sparkConf, Seconds(batchDuration))
 
     val kafkaParams: Map[String, String] = Map(
       "group.id" -> args(0),
@@ -32,6 +35,12 @@ object TwitterConsumer {
 
     records
       .groupByKey()
+      .map {
+        x => {
+          Thread.sleep((batchDuration * 1000 * reducerLoad).toLong)
+          x
+        }
+      }
       /**
         * This ensures that the groping is correct in each mini-batch!
         */

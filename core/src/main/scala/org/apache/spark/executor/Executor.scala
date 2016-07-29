@@ -279,12 +279,14 @@ private[spark] class Executor(
             taskMemoryManager,
             env.metricsSystem,
             task.initialAccumulators)
-          SparkEnv.get.repartitioningWorker()
-            .asInstanceOf[RepartitioningTrackerWorker].taskArrival(
-            taskId,
-            task.stageId,
-            context
-          )
+          SparkEnv.get.repartitioningWorker() match {
+            case Some(trackerWorker) =>
+              trackerWorker.asInstanceOf[RepartitioningTrackerWorker].taskArrival(
+                taskId,
+                task.stageId,
+                context)
+            case _ => ()
+          }
           logInfo(s"Actually running task $taskId")
           val res = task.run(
             taskAttemptId = taskId,

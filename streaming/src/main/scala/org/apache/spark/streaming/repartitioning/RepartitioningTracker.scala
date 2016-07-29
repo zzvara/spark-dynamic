@@ -340,8 +340,6 @@ class StreamingStrategy(streamID: Int,
       return false
     }
 
-    // partitionerHistory.last.
-
     val repartitioner = repartition(globalHistogram.take(histograms.size))
 
     clearHistograms()
