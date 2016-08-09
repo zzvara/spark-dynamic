@@ -48,20 +48,20 @@ object QueueStreamMusicTimeSeries {
       override def run(): Unit = {
         Source.fromFile(args(0)).getLines.grouped(recordsPerMinibatch).foreach(group => {
           //              println(s"### queue length : ${rddQueue.length}")
-          if (rddQueue.length < 2) {
-            rddQueue += ssc.sparkContext.parallelize(group, numPartitions)
+          while (rddQueue.length >= 2) {
             Thread.sleep(sleepTime)
           }
+          rddQueue += ssc.sparkContext.parallelize(group, numPartitions)
         })
       }
     }).start()
 
-    val records = ssc.queueStream(rddQueue, oneAtATime = true).repartition(numPartitions)
+    val records = ssc.queueStream(rddQueue, oneAtATime = true)
       .map(line => {
         new MusicRecord(line.split("""\|"""))
       })
       .flatMap(record => record.tags.map(t => (t, (t, record))))
-      .groupByKey()
+      .groupByKey(numPartitions)
       .count()
       .print()
 

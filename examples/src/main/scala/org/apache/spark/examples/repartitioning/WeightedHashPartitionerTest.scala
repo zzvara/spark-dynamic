@@ -42,7 +42,7 @@ object WeightedHashPartitionerTest {
     // val block = 18.0d / 55
 
     val weights = Array[Double](2.0d / 55, 1.0d / 55)
-    val info = new PartitioningInfo(p, pCut, sCut, level)
+    val info = new PartitioningInfo(p, pCut, sCut, level, null, null)
 
     val partitioner = new WeightedHashPartitioner(weights, info, {
       case dd: Double => dd
@@ -70,7 +70,7 @@ object WeightedHashPartitionerTest {
     // val block = 28.0d / 55
 
     val weights = Array[Double]()
-    val info = new PartitioningInfo(p, pCut, sCut, level)
+    val info = new PartitioningInfo(p, pCut, sCut, level, null, null)
 
     val partitioner = new WeightedHashPartitioner(weights, info, {
       case dd: Double => dd
@@ -98,7 +98,7 @@ object WeightedHashPartitionerTest {
     // val block = 2.0d / 5
 
     val weights = Array[Double](3.0d / 55, 2.0d / 55, 1.0d / 55)
-    val info = new PartitioningInfo(p, pCut, sCut, level)
+    val info = new PartitioningInfo(p, pCut, sCut, level, null, null)
 
     val partitioner = new WeightedHashPartitioner(weights, info, {
       case dd: Double => dd
@@ -127,7 +127,7 @@ object WeightedHashPartitionerTest {
     // val block = 0.0d
 
     val weights = Array[Double](4.0d / 55, 3.0d / 55, 2.0d / 55, 1.0d / 55)
-    val info = new PartitioningInfo(p, pCut, sCut, level)
+    val info = new PartitioningInfo(p, pCut, sCut, level, null, null)
 
     val partitioner = new WeightedHashPartitioner(weights, info, {
       case dd: Double => dd

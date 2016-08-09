@@ -17,19 +17,21 @@
 
 package org.apache.spark
 
-case class PartitioningInfo(partitions: Int, cut: Int, sCut: Int, level: Double)
+case class PartitioningInfo(partitions: Int, cut: Int, sCut: Int, level: Double, sortedKeys: Array[Any], sortedValues: Array[Double])
 
 object PartitioningInfo {
 
-  def newInstance(sortedValues: Array[Double], numPartitions: Int,
+  def newInstance(globalHistogram: scala.collection.Seq[(Any, Double)], numPartitions: Int,
     treeDepthHint: Int, sCutHint: Int = 0): PartitioningInfo = {
+    val sortedValues = globalHistogram.map(_._2).toArray.take(numPartitions)
+    val sortedKeys = globalHistogram.map(_._1).toArray.take(numPartitions)
     val pCutHint = Math.pow(2, treeDepthHint - 1).toInt
     val startingCut = Math.min(numPartitions, sortedValues.length)
     var computedSCut = 0
+    var computedLevel = 1.0d / numPartitions
+    var remainder = 1.0d
 
     def computeCuts(i: Int): Unit = {
-      var remainder = 1.0d
-      var computedLevel = 1.0d / numPartitions
       if (i < startingCut && computedLevel <= sortedValues(i)) {
         remainder -= sortedValues(i)
         if (i < numPartitions - 1) computedLevel = remainder / (numPartitions - 1 - i) else computedLevel = 0.0d
@@ -41,6 +43,7 @@ object PartitioningInfo {
 
     val actualSCut = Math.max(sCutHint, computedSCut)
     val actualPCut = Math.min(pCutHint, startingCut - actualSCut)
+    // recompute level to minimize rounding errors
     val level = Math.max(0, (1.0d - sortedValues.take(actualSCut).sum) / (numPartitions - actualSCut))
     val actualCut = actualSCut + actualPCut
 
@@ -48,7 +51,7 @@ object PartitioningInfo {
       s"sCut=$actualSCut, pCut=$actualPCut, level=$level, " +
       s"block=${(numPartitions - actualCut) * level}, maxKey=${sortedValues.headOption}")
 
-    new PartitioningInfo(numPartitions, actualCut, actualSCut, level)
+    new PartitioningInfo(numPartitions, actualCut, actualSCut, level, sortedKeys, sortedValues)
   }
 }
 
@@ -88,10 +91,10 @@ abstract class Repartitioner(val parent: Partitioner) extends Partitioner {
 //}
 
 class KeyIsolationPartitioner(
-  partitioningInfo: PartitioningInfo,
-  sortedKeys: Array[Any],
+  val partitioningInfo: PartitioningInfo,
   weightedHashPartitioner: WeightedHashPartitioner) extends Partitioner {
 
+  val sortedKeys: Array[Any] = partitioningInfo.sortedKeys
   val heaviestKeys = sortedKeys.take(partitioningInfo.cut)
   private val heavyKeysMap = Map[Any, Int]() ++ heaviestKeys.zipWithIndex
 
@@ -122,7 +125,7 @@ class WeightedHashPartitioner(
   for (i <- 0 until cut - sCut - 1 by 1) {
     assert(weights(i) >= weights(i + 1) - precision)
   }
-  assert(weights.isEmpty || weights.last >= 0 - precision)
+  assert(weights.isEmpty || weights.last >= 0 - precision, s"${weights.mkString("[", ",", "]")}")
   private val aggregated = weights.scan(0.0d)(_ + _).drop(1)
   private val sum = if (cut > sCut) aggregated.last else 0
 
@@ -143,13 +146,14 @@ class WeightedHashPartitioner(
 
 object WeightedHashPartitioner {
 
-  def newInstance(sortedValues: Array[Double], partitioningInfo: PartitioningInfo,
+  def newInstance(partitioningInfo: PartitioningInfo,
     hash: Any => Double): WeightedHashPartitioner = {
     val cut = partitioningInfo.cut
+    val sortedValues: Array[Double] = partitioningInfo.sortedValues
 
     new WeightedHashPartitioner(
       Array.tabulate[Double](cut - partitioningInfo.sCut)
-        (i => partitioningInfo.level - sortedValues.take(cut)(cut - i - 1)),
+        (i => partitioningInfo.level - sortedValues(cut - i - 1)),
       partitioningInfo,
       hash)
   }

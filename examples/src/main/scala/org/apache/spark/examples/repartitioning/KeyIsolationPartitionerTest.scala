@@ -44,14 +44,14 @@ object KeyIsolationPartitionerTest {
     //    val block = 18.0d / 55
 
     val weights = Array[Double](2.0d / 55, 1.0d / 55)
-    val info = new PartitioningInfo(p, pCut, sCut, level)
+    val info = new PartitioningInfo(p, pCut, sCut, level, Array[Any](6, 5, 1, 9), Array[Double](10.0d / 55, 9.0d / 55, 8.0d / 55, 7.0d / 55))
 
     val weightedPartitioner = new WeightedHashPartitioner(weights, info, {
       case dd: Int => (dd % 21).toDouble / 21
       case _ => 0.0d
     })
 
-    val partitioner = new KeyIsolationPartitioner(info, Array[Any](6, 5, 1, 9), weightedPartitioner)
+    val partitioner = new KeyIsolationPartitioner(info, weightedPartitioner)
 
     assert(partitioner.numPartitions == 6)
 
@@ -78,14 +78,14 @@ object KeyIsolationPartitionerTest {
     // val block = 28.0d / 55
 
     val weights = Array[Double]()
-    val info = new PartitioningInfo(p, pCut, sCut, level)
+    val info = new PartitioningInfo(p, pCut, sCut, level,  Array[Any](6, 5, 1), Array[Double](10.0d / 55, 9.0d / 55, 8.0d / 55))
 
     val weightedPartitioner = new WeightedHashPartitioner(weights, info, {
       case dd: Int => (dd % 28).toDouble / 28
       case _ => 0.0d
     })
 
-    val partitioner = new KeyIsolationPartitioner(info, Array[Any](6, 5, 1), weightedPartitioner)
+    val partitioner = new KeyIsolationPartitioner(info, weightedPartitioner)
 
     assert(partitioner.numPartitions == 7)
 
@@ -111,14 +111,14 @@ object KeyIsolationPartitionerTest {
     // val block = 2.0d / 5
 
     val weights = Array[Double](3.0d / 55, 2.0d / 55, 1.0d / 55)
-    val info = new PartitioningInfo(p, pCut, sCut, level)
+    val info = new PartitioningInfo(p, pCut, sCut, level, Array[Any](4, 3, 1), Array[Double](10.0d / 55, 9.0d / 55, 8.0d / 55))
 
     val weightedPartitioner = new WeightedHashPartitioner(weights, info, {
       case dd: Int => (dd % 28).toDouble / 28
       case _ => 0.0d
     })
 
-    val partitioner = new KeyIsolationPartitioner(info, Array[Any](4, 3, 1), weightedPartitioner)
+    val partitioner = new KeyIsolationPartitioner(info, weightedPartitioner)
 
     assert(partitioner.numPartitions == 5)
 
@@ -145,14 +145,15 @@ object KeyIsolationPartitionerTest {
     // val block = 0.0d
 
     val weights = Array[Double](4.0d / 55, 3.0d / 55, 2.0d / 55, 1.0d / 55)
-    val info = new PartitioningInfo(p, pCut, sCut, level)
+    val info = new PartitioningInfo(p, pCut, sCut, level, Array[Any](0, 1, 2, 3, 4, 5), Array[Double](10.0d / 55, 9.0d / 55, 8.0d / 55, 7.0d / 55,
+      6.0d / 55, 5.0d / 55))
 
     val weightedPartitioner = new WeightedHashPartitioner(weights, info, {
       case dd: Int => (dd % 10).toDouble / 10
       case _ => 0.0d
     })
 
-    val partitioner = new KeyIsolationPartitioner(info, Array[Any](0, 1, 2, 3, 4, 5), weightedPartitioner)
+    val partitioner = new KeyIsolationPartitioner(info, weightedPartitioner)
 
     assert(partitioner.numPartitions == 6)
 

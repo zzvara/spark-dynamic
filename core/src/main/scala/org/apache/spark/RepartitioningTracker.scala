@@ -680,52 +680,15 @@ class Throughput(override val totalSlots: Int) extends Scanner(totalSlots) {
   * and decides when and how to repartition a certain stage.
   */
 abstract class Decider(stageID: Int) extends ColorfulLogging with Serializable {
+  def numPartitions: Int
   protected val histograms = HashMap[Int, DataCharacteristicsInfo]()
-
-  protected var numPartitions: Int
   protected var currentVersion: Int = 0
   protected var repartitionCount: Int = 0
-
   protected val broadcastHistory = ArrayBuffer[Partitioner]()
-
   protected val treeDepthHint =
     SparkEnv.get.conf.getInt("spark.repartitioning.partitioner-tree-depth", 3)
 
-  def onHistogramArrival(partitionID: Int,
-                         keyHistogram: DataCharacteristicsInfo): Unit
-  def decide(): Boolean
-  protected def repartition(globalHistogram: scala.collection.Seq[(Any, Double)]): Partitioner = {
-    logInfo(
-      globalHistogram.foldLeft(
-        s"Global histogram for repartitioning " +
-          s"step $repartitionCount:\n")((x, y) =>
-        x + s"\t${y._1}\t->\t${y._2}\n"), "DRHistogram", "DRRepartitioner")
-
-    val sortedValues = globalHistogram.map(_._2).toArray
-    val sortedKeys = globalHistogram.map(_._1).toArray
-
-    //    cut = Math.min(cut, highestValues.length)
-    val partitioningInfo = PartitioningInfo.newInstance(sortedValues, numPartitions, treeDepthHint)
-
-    val repartitioner = new KeyIsolationPartitioner(
-      partitioningInfo,
-      sortedKeys,
-      WeightedHashPartitioner.newInstance(sortedValues, partitioningInfo, (key: Any) =>
-        (MurmurHash3.stringHash((key.hashCode + 123456791).toString).toDouble
-          / Int.MaxValue + 1) / 2)
-    )
-
-    logInfo("Partitioner created, simulating run with global histogram.")
-    logInfo(globalHistogram.toString())
-    sortedKeys.foreach {
-      key => logInfo(s"Key $key went to ${repartitioner.getPartition(key)}.")
-    }
-
-    logInfo(s"Decided to repartition stage $stageID.", "DRRepartitioner")
-    currentVersion += 1
-
-    repartitioner
-  }
+  def onHistogramArrival(partitionID: Int, keyHistogram: DataCharacteristicsInfo): Unit
 
   protected def isValidHistogram(histogram: scala.collection.Seq[(Any, Double)]): Boolean = {
     if (histogram.size < 2) {
@@ -739,54 +702,110 @@ abstract class Decider(stageID: Int) extends ColorfulLogging with Serializable {
     }
   }
 
-  protected def clearHistograms(): Unit = {
-    histograms.clear()
+  protected def clearHistograms(): Unit
+
+  /**
+    * Decides if repartitioning is needed. If so, constructs a new
+    * partitioning function and sends the strategy to each worker.
+    * It asks the RepartitioningTrackerMaster to broadcast the new
+    * strategy to workers.
+    */
+  def repartition(): Boolean = {
+    val doneRepartitioning = if (preDecide()) {
+      val globalHistogram = getGlobalHistogram
+      if (decideAndValidate(globalHistogram)) {
+        resetPartitioners(getNewPartitioner(getPartitioningInfo(globalHistogram)))
+        true
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+    cleanup()
+    doneRepartitioning
   }
+
+  protected def preDecide(): Boolean
+
+  protected def getGlobalHistogram: scala.collection.Seq[(Any, Double)] = {
+    val numRecords =
+      histograms.values.map(
+        _.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam].recordsPassed).sum
+
+    val globalHistogram =
+      histograms.values.map(h => h.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam]
+        .normalize(h.value.get
+          .asInstanceOf[scala.collection.immutable.Map[Any, Double]], numRecords))
+        .reduce(DataCharacteristicsAccumulatorParam.merge[Any, Double](0.0)(
+          (a: Double, b: Double) => a + b)
+        )
+        .toSeq.sortBy(-_._2)
+    logInfo(
+      globalHistogram.foldLeft(
+        s"Global histogram for repartitioning " +
+          s"step $repartitionCount:\n")((x, y) =>
+        x + s"\t${y._1}\t->\t${y._2}\n"), "DRHistogram")
+    globalHistogram
+  }
+
+  protected def decideAndValidate(globalHistogram: scala.collection.Seq[(Any, Double)]): Boolean
+
+  protected def getPartitioningInfo(globalHistogram: scala.collection.Seq[(Any, Double)]): PartitioningInfo = {
+    PartitioningInfo.newInstance(globalHistogram, numPartitions, treeDepthHint)
+  }
+
+  protected def getNewPartitioner(partitioningInfo: PartitioningInfo): Partitioner = {
+    val sortedKeys = partitioningInfo.sortedKeys
+    //    val partitioningInfo = PartitioningInfo.newInstance(sortedValues, numPartitions, treeDepthHint)
+
+    val repartitioner = new KeyIsolationPartitioner(
+      partitioningInfo,
+      WeightedHashPartitioner.newInstance(partitioningInfo, (key: Any) =>
+        (MurmurHash3.stringHash((key.hashCode + 123456791).toString).toDouble
+          / Int.MaxValue + 1) / 2)
+    )
+
+    logInfo("Partitioner created, simulating run with global histogram.")
+    sortedKeys.foreach {
+      key => logInfo(s"Key $key went to ${repartitioner.getPartition(key)}.")
+    }
+
+    logInfo(s"Decided to repartition stage $stageID.", "DRRepartitioner")
+    currentVersion += 1
+
+    repartitioner
+  }
+
+  protected def resetPartitioners(newPartitioner: Partitioner): Unit
+
+  protected def cleanup(): Unit
 }
 
 /**
   * A simple strategy to decide when and how to repartition a stage.
   */
 class Strategy(stageID: Int,
-               numberOfTasks: Int,
-               partitioner: Partitioner)
-  extends Decider(stageID)  {
-
-  protected var numPartitions: Int = numberOfTasks
-  private var minScale = 1.0d
-  private val sCutHint = 0
-  private val pCutHint = Math.pow(2, treeDepthHint - 1).toInt
-
-  private val desiredNumberOfHistograms = numberOfTasks
-
-  /**
-    * @todo Remove these assertions in the future.
-    */
-  assert(numPartitions > 0)
-  //  assert(cutHint >= -1)
-  //  assert(cutHint <= numPartitions)
-  assert(sCutHint >= 0)
-  assert(pCutHint >= 0)
-  assert(sCutHint <= numPartitions - 1)
-
-  logInfo("sCutHint: " + sCutHint + ", pCutHint: " + pCutHint, "strongYellow")
+  val numPartitions: Int,
+  partitioner: Partitioner)
+  extends Decider(stageID) {
 
   /**
     * Called by the RepartitioningTrackerMaster if new histogram arrives
     * for this particular job's strategy.
     */
   override def onHistogramArrival(partitionID: Int,
-                                  keyHistogram: DataCharacteristicsInfo): Unit = {
+    keyHistogram: DataCharacteristicsInfo): Unit = {
     this.synchronized {
       val histogramMeta = keyHistogram.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam]
       if (histogramMeta.version == currentVersion) {
         logInfo(s"Recording histogram arrival for partition $partitionID.",
-                "DRCommunication", "DRHistogram")
+          "DRCommunication", "DRHistogram")
         if (!SparkEnv.get.conf.getBoolean("spark.repartitioning.only.once", true) ||
           repartitionCount == 0) {
           logInfo(s"Updating histogram for partition $partitionID.", "DRHistogram")
           histograms.update(partitionID, keyHistogram)
-          if (decide()) {
+          if (repartition()) {
             repartitionCount += 1
             if (SparkEnv.get.conf.getBoolean("spark.repartitioning.only.once", true)) {
               /*
@@ -799,54 +818,40 @@ class Strategy(stageID: Int,
         }
       } else if (histogramMeta.version < currentVersion) {
         logInfo(s"Recording outdated histogram arrival for partition $partitionID. " +
-                s"Doing nothing.", "DRCommunication", "DRHistogram")
+          s"Doing nothing.", "DRCommunication", "DRHistogram")
       } else {
         logInfo(s"Recording histogram arrival from a future step for " +
-                s"partition $partitionID. Doing nothing.", "DRCommunication", "DRHistogram")
+          s"partition $partitionID. Doing nothing.", "DRCommunication", "DRHistogram")
       }
     }
   }
 
-  /**
-    * Decides if repartitioning is needed. If so, constructs a new
-    * partitioning function and sends the strategy to each worker.
-    * It asks the RepartitioningTrackerMaster to broadcast the new
-    * strategy to workers.
-    */
-  override def decide(): Boolean = {
-    logInfo(s"Deciding if need any repartitioning now.", "DRRepartitioner")
-
-    if (histograms.size >=
-      SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) {
-      logInfo(s"Number of received histograms: ${histograms.size}", "strongCyan")
-      val numRecords =
-        histograms.values.map(
-          _.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam].recordsPassed).sum
-
-      val globalHistogram =
-        histograms.values.map(h => h.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam]
-          .normalize(h.update.get
-          .asInstanceOf[scala.collection.immutable.Map[Any, Double]], numRecords))
-          .reduce(DataCharacteristicsAccumulatorParam.merge[Any, Double](0.0)(
-            (a: Double, b: Double) => a + b)
-          )
-          .toSeq.sortBy(-_._2)
-
-      val repartitioner = repartition(globalHistogram.take(numberOfTasks))
-
-      SparkEnv.get.repartitioningTracker
-        .asInstanceOf[RepartitioningTrackerMaster]
-        .broadcastRepartitioningStrategy(stageID, repartitioner, currentVersion)
-      broadcastHistory += repartitioner
-
-      // Histogram is not going to be valid while using another Partitioner.
-      histograms.clear()
-      logInfo(s"Version of histograms pushed up for stage $stageID", "DRHistogram")
-      true
-    } else {
-      false
-    }
+  override protected def clearHistograms(): Unit = {
+    // Histogram is not going to be valid while using another Partitioner.
+    histograms.clear()
   }
+
+  override protected def preDecide(): Boolean = {
+    histograms.size >=
+      SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)
+  }
+
+  // TODO check distance from uniform
+
+  override protected def decideAndValidate(globalHistogram: scala.collection.Seq[(Any, Double)]): Boolean = {
+    isValidHistogram(globalHistogram)
+  }
+
+  override protected def resetPartitioners(newPartitioner: Partitioner): Unit = {
+    SparkEnv.get.repartitioningTracker
+      .asInstanceOf[RepartitioningTrackerMaster]
+      .broadcastRepartitioningStrategy(stageID, newPartitioner, currentVersion)
+    broadcastHistory += newPartitioner
+    logInfo(s"Version of histograms pushed up for stage $stageID", "DRHistogram")
+    clearHistograms()
+  }
+
+  override protected def cleanup(): Unit = {}
 }
 
 class Worker(val executorID: String,
