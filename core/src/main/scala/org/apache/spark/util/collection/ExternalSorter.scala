@@ -21,13 +21,13 @@ import java.io._
 import java.util.Comparator
 
 import com.google.common.io.ByteStreams
-import org.apache.spark.AccumulatorParam.{DataCharacteristicsAccumulatorParam, Weightable}
 import org.apache.spark._
 import org.apache.spark.executor.ShuffleWriteMetrics
-import org.apache.spark.internal.ColorfulLogging
+import org.apache.spark.internal.{ColorfulLogging, Logging}
 import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.serializer._
 import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter}
+import org.apache.spark.util.{DataCharacteristicsAccumulator, Weightable}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -219,8 +219,7 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
 
   def insertAll(records: Iterator[Product2[K, V]]): Unit = {
     logInfo(s"Started execution of $taskInfo with " +
-            s"partitioner $partitioner, records.hasNext = ${records.hasNext}.",
-            "DRRepartitioning", "DRRepartitioning")
+            s"partitioner $partitioner, records.hasNext = ${records.hasNext}.")
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
     val shuffleWriteMetrics = context.taskMetrics().shuffleWriteMetrics
@@ -243,7 +242,7 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
         kv = records.next()
         val partitionId = getPartition(kv._1)
         if (map((partitionId, kv._1)) == null) {
-          shuffleWriteMetrics.foreach(_.addKeyWritten(kv._1, 1))
+          shuffleWriteMetrics.addKeyWritten(kv._1, 1)
         }
         map.changeValue((partitionId, kv._1), update)
         maybeSpillCollection(usingMap = true)
@@ -258,14 +257,14 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
             records
           } else {
             logInfo("Recording data characteristics of shuffle write.")
-            if (DataCharacteristicsAccumulatorParam.isWeightable[V]()) {
+            if (DataCharacteristicsAccumulator.isWeightable[V]()) {
               logInfo("Values are weightable, going to use WeightedDataCharacteristicsIterator.")
               new WeightedDataCharacteristicsIterator[K, V with Weightable](
                 records.asInstanceOf[Iterator[Product2[K, V with Weightable]]],
                 shuffleWriteMetrics)
             } else {
               logInfo(s"Values are not weightable (${
-                DataCharacteristicsAccumulatorParam.className[V]()
+                DataCharacteristicsAccumulator.className[V]()
               }), going to use default DataCharacteristicsIterator.")
               new DataCharacteristicsIterator[K, V](records, shuffleWriteMetrics)
             }
@@ -288,17 +287,17 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
 
     val endTime = System.nanoTime()
     val insertionTime = (endTime - startTime) / 1000
-    shuffleWriteMetrics.foreach(_.incInsertionTime(insertionTime))
+    shuffleWriteMetrics.incInsertionTime(insertionTime)
 
     logInfo(s"Insertion took $insertionTime ms.")
-    logDebug(s"Finished execution of $taskInfo.", "strongBlue")
+    logDebug(s"Finished execution of $taskInfo.")
   }
 
   private def maybeRepartition(): Unit = {
     if (isVersionChanged) {
       // TODO repartitioning more times when version jumps up more than one
       updateCurrentVersion()
-      logDebug(s"Started repartitioning for $taskInfo.", "DRRepartitioning", "DRDebug")
+      logDebug(s"Started repartitioning for $taskInfo.")
       setRepartitioner(
         getRepartitioner.getOrElse(throw new RuntimeException(
             s"Repartitioner not found for version $currentRepartitioningVersion $taskInfo!")))
@@ -306,9 +305,7 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
       repartition()
       val repartitioningTime = System.currentTimeMillis() - repartitioningStartedTime
       logInfo(s"Repartitioning took $repartitioningTime milliseconds for $taskInfo.")
-      context.taskMetrics().shuffleWriteMetrics.foreach {
-        _.incRepartitioningTime(repartitioningTime)
-      }
+      context.taskMetrics().shuffleWriteMetrics.incRepartitioningTime(repartitioningTime)
       currentIterator =
         currentIterator.asInstanceOf[DataCharacteristicsIterator[K, V]].originalIterator
     }
@@ -336,14 +333,6 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
     if (estimatedSize > _peakMemoryUsedBytes) {
       _peakMemoryUsedBytes = estimatedSize
     }
-  }
-
-  override protected[this] def spill(collection: WritablePartitionedPairCollection[K, C]): Unit = {
-    // Because these files may be read during shuffle, their compression must be controlled by
-    // spark.shuffle.compress instead of spark.shuffle.spill.compress, so we need to use
-    // createTempShuffleBlock here; see SPARK-3426 for more context.
-    val (blockId, file) = diskBlockManager.createTempShuffleBlock()
-    spill(collection, blockId, file)
   }
 
   /**
@@ -951,14 +940,14 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
   }
 
   def setRepartitioner(newPartitioner: Partitioner): Unit = {
-    logDebug(s"Setting repartitioner $newPartitioner for $taskInfo.", "DRRepartitioning")
+    logDebug(s"Setting repartitioner $newPartitioner for $taskInfo.")
     if (numPartitions > 1) {
       this.newPartitioner = Some(newPartitioner)
     }
   }
 
   def initiateRepartitioning(newPartitioner: Partitioner): Unit = {
-    logDebug(s"Initiating repartitioning for $taskInfo.", "DRRepartitioning")
+    logDebug(s"Initiating repartitioning for $taskInfo.")
     if (numPartitions > 1) {
       this.newPartitioner = Some(newPartitioner)
     }
@@ -984,7 +973,7 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
     val bufferIterator = getCollection.partitionedDestructiveSortedIterator(None).buffered
 
     if (bufferIterator.nonEmpty) {
-      logInfo(s"Repartitioning in-memory data", "DRDebug")
+      logInfo(s"Repartitioning in-memory data")
       val repartitioningBuffer = new RepartitioningBuffer[K, C](partitioner.get)
       bufferIterator.foreach(x => repartitioningBuffer.insert(x._1._2, x._2, x._1._1))
 
@@ -1007,8 +996,8 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
 
   def repartitionSpills(isSomethingInMemory: Boolean): Unit = {
     if (spills.nonEmpty) {
-      logInfo(s"Repartitioning spills", "DRDebug")
-      logInfo(s"Number of spills before repartitioning: ${spills.length}", "DRDebug")
+      logInfo(s"Repartitioning spills")
+      logInfo(s"Number of spills before repartitioning: ${spills.length}")
       _diskBytesSpilled = 0
       oldSpills = spills
       spills = new ArrayBuffer[SpilledFile]()
@@ -1017,13 +1006,12 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
       }
       oldSpills.foreach(repartitionSpill)
       oldSpills = null
-      logInfo(s"Number of spills after repartitioning: ${spills.length}", "DRDebug")
+      logInfo(s"Number of spills after repartitioning: ${spills.length}")
     }
   }
 
   private def spillFromMemory(): Unit = {
-    logDebug(s"Spilling from memory before repartitioning ${_elementsRead} records.",
-      "DRRepartitioning")
+    logDebug(s"Spilling from memory before repartitioning ${_elementsRead} records.")
     if (aggregator.isDefined) {
       spill(map)
       map = new PartitionedAppendOnlyMap[K, C]
@@ -1034,7 +1022,7 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
   }
 
   private def repartitionSpill(spilledFile: SpilledFile): Unit = {
-    logDebug(s"Repartitioning spill ${spilledFile.blockId}.", "DRRepartitioning")
+    logDebug(s"Repartitioning spill ${spilledFile.blockId}.")
     val repartitioningBuffer = new RepartitioningBuffer[K, C](partitioner.get)
     repartitioningBuffer.insertAll(readSpillInMemory(spilledFile))
     writeSpill(repartitioningBuffer, spilledFile.blockId)
@@ -1057,7 +1045,7 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
     } catch {
       case ex: Exception => throw new RuntimeException("File cannot be deleted!")
     }
-    spill(outBuffer, repartitionBlockId, file)
+    spill(outBuffer)
   }
 
   private def finishRepartitioning(): Unit = {
@@ -1067,35 +1055,31 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
 
   private def pushVersion(): Unit = {
     repartitioningInfo.foreach(
-      _.getHistogramMeta match {
-        case Some(histogramMeta) => histogramMeta.incrementVersion
-        case None =>
-          throw new SparkException("Histogram meta is not available, can not push version!")
-      }
+      _.getHistogramMeta.incrementVersion
     )
   }
 }
 
 class DataCharacteristicsIterator[K, V](
   val originalIterator: Iterator[Product2[K, V]],
-  val shuffleWriteMetrics: Option[ShuffleWriteMetrics])
+  val shuffleWriteMetrics: ShuffleWriteMetrics)
 extends Iterator[Product2[K, V]] {
   override def hasNext: Boolean = originalIterator.hasNext
 
   override def next(): Product2[K, V] = {
     val pair = originalIterator.next
-    shuffleWriteMetrics.foreach(_.addKeyWritten(pair._1, 1))
+    shuffleWriteMetrics.addKeyWritten(pair._1, 1)
     pair
   }
 }
 
 class WeightedDataCharacteristicsIterator[K, V <: Weightable](
   originalIterator: Iterator[Product2[K, V]],
-  shuffleWriteMetrics: Option[ShuffleWriteMetrics])
+  shuffleWriteMetrics: ShuffleWriteMetrics)
 extends DataCharacteristicsIterator[K, V](originalIterator, shuffleWriteMetrics) {
   override def next(): Product2[K, V] = {
     val pair = originalIterator.next
-    shuffleWriteMetrics.foreach(_.addKeyWritten(pair._1, pair._2.complexity()))
+    shuffleWriteMetrics.addKeyWritten(pair._1, pair._2.complexity())
     pair
   }
 }

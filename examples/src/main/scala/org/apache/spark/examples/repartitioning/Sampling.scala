@@ -1,19 +1,11 @@
 
 package org.apache.spark.examples.repartitioning
 
-import org.apache.spark.Accumulator
-import org.apache.spark.AccumulatorParam.ShuffleWriteDataCharacteristicsAccumulatorParam
-
-import scala.collection.immutable.HashMap
+import org.apache.spark.util.DataCharacteristicsAccumulator
 
 object Sampling {
   def main(args: Array[String]) {
-    val accum = new Accumulator[Map[Any, Double]](
-      new HashMap[Any, Double](),
-      new ShuffleWriteDataCharacteristicsAccumulatorParam,
-      Some("sampling"),
-      internal = false,
-      countFailedValues = true)
+    val accum = new DataCharacteristicsAccumulator()
 
     val d1 = System.nanoTime()
 
@@ -38,7 +30,7 @@ object Sampling {
     val t3 = System.nanoTime()
 
     data.foreach {
-      x => accum.add(Map[Any, Double](x -> 1.0))
+      x => accum.add(x -> 1.0)
     }
 
     val t4 = System.nanoTime()

@@ -277,9 +277,9 @@ private[v1] object AllStagesResource {
   def convertShuffleReadMetrics(internal: InternalShuffleReadMetrics): ShuffleReadMetrics = {
     new ShuffleReadMetrics(
       remoteBlocksFetched = internal.remoteBlocksFetched,
-      remoteBlockFetchInfos = internal.remoteBlockFetchInfos(),
+      remoteBlockFetchInfos = internal.remoteBlockFetchInfos,
       localBlocksFetched = internal.localBlocksFetched,
-      localBlockFetchInfos = internal.localBlockFetchInfos(),
+      localBlockFetchInfos = internal.localBlockFetchInfos,
       fetchWaitTime = internal.fetchWaitTime,
       remoteBytesRead = internal.remoteBytesRead,
       localBytesRead = internal.localBytesRead,
@@ -295,7 +295,7 @@ private[v1] object AllStagesResource {
       repartitioningTime = internal.repartitioningTime,
       insertionTime = internal.insertionTime,
       recordsWritten = internal.recordsWritten,
-      dataCharacteristics = internal.dataCharacteristics.localValue
+      dataCharacteristics = internal.dataCharacteristics.value
     )
   }
 }

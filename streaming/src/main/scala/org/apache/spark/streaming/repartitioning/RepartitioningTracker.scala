@@ -1,14 +1,13 @@
 
 package org.apache.spark.streaming.repartitioning
 
-import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
 import org.apache.spark._
-import org.apache.spark.executor.ShuffleWriteMetrics._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.scheduler._
 import org.apache.spark.streaming.{StreamingContext, Time}
 import org.apache.spark.streaming.dstream.{DStream, ShuffledDStream, Stream}
+import org.apache.spark.util.DataCharacteristicsAccumulator
 
 import scala.collection.mutable
 import scala.collection.mutable.{Map, Set}
@@ -179,7 +178,7 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
   def updateLocalHistogramForStreaming(
     stream: Stream,
     taskInfo: TaskInfo,
-    dataCharacteristics: DataCharacteristics[Any]
+    dataCharacteristics: DataCharacteristicsAccumulator
   ): Unit = {
     _streamData.find { _._2.hasParent(stream.ID) } match {
       case Some((sID, streamData)) =>
@@ -187,9 +186,7 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
                 s"in stream ${stream.ID} with output stream ID $sID.")
         streamData.strategies.getOrElseUpdate(
           stream.ID, new StreamingStrategy(stream.ID, stream, getNumberOfPartitions(stream.ID))
-        ).onHistogramArrival(taskInfo.index,
-          dataCharacteristics.toInfo(None, Some(dataCharacteristics.value),
-            Some(dataCharacteristics.param)))
+        ).onHistogramArrival(taskInfo.index, dataCharacteristics)
       case None => logWarning(
         s"Could not update local histogram for streaming," +
         s" since streaming data does not exist for DStream" +
@@ -236,21 +233,15 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
           case Some(stream) =>
             val streamID = stream.ID
             logInfo(s"Task ended with DStream ID of $streamID.")
-            taskEnd.taskMetrics.shuffleWriteMetrics match {
-              case Some(shuffleWriteMetrics) =>
+            val shuffleWriteMetrics = taskEnd.taskMetrics.shuffleWriteMetrics
                 val size = shuffleWriteMetrics.dataCharacteristics.value.size
-                val recordsPassed = shuffleWriteMetrics.dataCharacteristics.param
-                  .asInstanceOf[DataCharacteristicsAccumulatorParam].recordsPassed
+                val recordsPassed = shuffleWriteMetrics.dataCharacteristics.recordsPassed
                 logInfo(s"DataCharacteristics size is $size with $recordsPassed records passed.")
                 updateLocalHistogramForStreaming(
                   stream,
                   taskEnd.taskInfo,
                   shuffleWriteMetrics.dataCharacteristics)
-              case None =>
-                logWarning(s"No ShuffleWriteMetrics for task ${taskEnd.taskInfo.id}.")
-            }
-          case None =>
-            super.onTaskEnd(taskEnd)
+          case None => super.onTaskEnd(taskEnd)
         }
       }
     }
@@ -290,9 +281,8 @@ class StreamingStrategy(
     * for this particular job's strategy.
     */
   override def onHistogramArrival(partitionID: Int,
-    keyHistogram: DataCharacteristicsInfo): Unit = {
+    keyHistogram: DataCharacteristicsAccumulator): Unit = {
     this.synchronized {
-      val histogramMeta = keyHistogram.param.get.asInstanceOf[DataCharacteristicsAccumulatorParam]
       logInfo(s"Recording histogram arrival for partition $partitionID.",
         "DRCommunication", "DRHistogram")
       histograms.update(partitionID, keyHistogram)

@@ -17,6 +17,9 @@
 
 package org.apache.spark
 
+import org.apache.spark.status.api.v1.BlockFetchInfo
+import org.apache.spark.storage.{BlockId, BlockStatus}
+
 /**
  * A simpler value of [[Accumulable]] where the result type being accumulated is the same
  * as the types of elements being merged, i.e. variables that are only "added" to through an
@@ -86,24 +89,28 @@ object AccumulatorParam {
   @deprecated("use AccumulatorV2", "2.0.0")
   implicit object DoubleAccumulatorParam extends AccumulatorParam[Double] {
     def addInPlace(t1: Double, t2: Double): Double = t1 + t2
+
     def zero(initialValue: Double): Double = 0.0
   }
 
   @deprecated("use AccumulatorV2", "2.0.0")
   implicit object IntAccumulatorParam extends AccumulatorParam[Int] {
     def addInPlace(t1: Int, t2: Int): Int = t1 + t2
+
     def zero(initialValue: Int): Int = 0
   }
 
   @deprecated("use AccumulatorV2", "2.0.0")
   implicit object LongAccumulatorParam extends AccumulatorParam[Long] {
     def addInPlace(t1: Long, t2: Long): Long = t1 + t2
+
     def zero(initialValue: Long): Long = 0L
   }
 
   @deprecated("use AccumulatorV2", "2.0.0")
   implicit object FloatAccumulatorParam extends AccumulatorParam[Float] {
     def addInPlace(t1: Float, t2: Float): Float = t1 + t2
+
     def zero(initialValue: Float): Float = 0f
   }
 
@@ -113,6 +120,7 @@ object AccumulatorParam {
   @deprecated("use AccumulatorV2", "2.0.0")
   private[spark] object StringAccumulatorParam extends AccumulatorParam[String] {
     def addInPlace(t1: String, t2: String): String = t2
+
     def zero(initialValue: String): String = ""
   }
 
@@ -120,11 +128,13 @@ object AccumulatorParam {
   // A better way to use this is to first accumulate the values yourself then them all at once.
   private[spark] class ListAccumulatorParam[T] extends AccumulatorParam[Seq[T]] {
     def addInPlace(t1: Seq[T], t2: Seq[T]): Seq[T] = t1 ++ t2
+
     def zero(initialValue: Seq[T]): Seq[T] = Seq.empty[T]
   }
 
   private[spark] class MapAccumulatorParam[K, V] extends AccumulatorParam[Map[K, V]] {
     def addInPlace(t1: Map[K, V], t2: Map[K, V]): Map[K, V] = t1 ++ t2
+
     def zero(initialValue: Map[K, V]): Map[K, V] = Map.empty[K, V]
   }
 
@@ -137,140 +147,4 @@ object AccumulatorParam {
 
   private[spark] object RemoteBlockFetchInfosAccumulatorParam
     extends ListAccumulatorParam[BlockFetchInfo]
-
-  private[spark] object ShuffleWriteDataCharacteristicsAccumulatorParam
-    extends DataCharacteristicsAccumulatorParam
-
-  private[spark] object ShuffleReadDataCharacteristicsAccumulatorParam
-    extends DataCharacteristicsAccumulatorParam
-
-  private[spark] class ShuffleWriteDataCharacteristicsAccumulatorParam
-    extends DataCharacteristicsAccumulatorParam
-
-  private[spark] class ShuffleReadDataCharacteristicsAccumulatorParam
-    extends DataCharacteristicsAccumulatorParam
-
-  /**
-    * Accumulator parameter to record data characteristics in form of key-histograms.
-    *
-    * The implementation allows to set a cap for the histogram. Also, it samples
-    * well for any data size, due to its back-off sampling nature. It is not sensitive
-    * to early or late heavy items. It performs with a higher error rate when the
-    * distribution is close to uniform.
-    */
-  private[spark] class DataCharacteristicsAccumulatorParam
-    extends MapAccumulatorParam[Any, Double] with Serializable with Logging {
-    private val TAKE: Int =
-      SparkEnv.get.conf.getInt("spark.data-characteristics.take", 4)
-    private val HISTOGRAM_SCALE_BOUNDARY: Double =
-      SparkEnv.get.conf.getInt("spark.data-characteristics.histogram-scale-boundary", 20)
-    private val BACKOFF_FACTOR: Double =
-      SparkEnv.get.conf.getDouble("spark.data-characteristics.backoff-factor", 2.0)
-    private val DROP_BOUNDARY: Double =
-      SparkEnv.get.conf.getDouble("spark.data-characteristics.drop-boundary", 0.001)
-    private val HISTOGRAM_SIZE_BOUNDARY: Int =
-      SparkEnv.get.conf.getInt("spark.data-characteristics.histogram-size-boundary", 100)
-    private val HISTOGRAM_COMPACTION: Int =
-      SparkEnv.get.conf.getInt("spark.data-characteristics.histogram-compaction", 60)
-    /**
-      * Rate in which records are put into the histogram.
-      * Value represent that each n-th input is recorded.
-      */
-    private var _sampleRate: Double = 1.0
-    def sampleRate: Double = _sampleRate
-    /**
-      * Size or width of the histogram, that is equal to the size of the map.
-      */
-    private var _width: Int = 0
-    def width: Int = _width
-
-    private var _recordsPassed: Long = 0
-    def recordsPassed: Long = _recordsPassed
-
-    private var _version: Int = 0
-    def version: Int = _version
-    def incrementVersion(): Unit = { _version += 1 }
-
-    def updateTotalSlots(totalSlots: Int): Unit = {
-      histogramCompaction = Math.max(histogramCompaction, totalSlots * 2)
-      logInfo(s"Updated histogram compaction level based on $totalSlots number" +
-              s" of total slots, to $histogramCompaction.")
-    }
-
-    private var histogramCompaction = HISTOGRAM_COMPACTION
-
-    def normalize(histogram: Map[Any, Double], normalizationParam: Long): Map[Any, Double] = {
-      val normalizationFactor = normalizationParam * sampleRate
-      histogram.mapValues(_ / normalizationFactor)
-    }
-
-    def increase(pair: Product2[Any, Any]): Double = 1.0
-
-    override def addAccumulator(r: Map[Any, Double], t: Map[Any, Double]): Map[Any, Double] = {
-      val pair = t.toList.head._1.asInstanceOf[Product2[Any, Any]]
-      _recordsPassed += 1
-      if (Math.random() <= _sampleRate) { // Decided to record the key.
-        val updatedHistogram = r + ((pair._1, {
-            val newValue = r.get(pair._1) match {
-              case Some(value) => value + increase(pair)
-              case None =>
-                _width = _width + 1
-                increase(pair)
-            }
-            newValue
-          }
-        ))
-        // Decide if scaling is needed.
-        if (_width * _sampleRate >= HISTOGRAM_SCALE_BOUNDARY) {
-          _sampleRate = _sampleRate / BACKOFF_FACTOR
-          val scaledHistogram =
-            updatedHistogram
-              .mapValues(x => x / BACKOFF_FACTOR)
-              .filter(p => p._2 > DROP_BOUNDARY)
-          // Decide if additional cut is needed.
-          if (_width > HISTOGRAM_SIZE_BOUNDARY) {
-            _width = histogramCompaction
-            scaledHistogram.toSeq.sortBy(-_._2).take(histogramCompaction).toMap
-          } else {
-            scaledHistogram
-          }
-        } else { // No need to cut the histogram.
-          updatedHistogram
-        }
-      } else { // Histogram does not change.
-        r
-      }
-    }
-
-    override def addInPlace(t1: Map[Any, Double], t2: Map[Any, Double]): Map[Any, Double] = {
-      merge[Any, Double](t1, t2)(_ + _)(0.0)
-    }
-
-    private def merge[A, B](s1: Map[A, B], s2: Map[A, B])(f: (B, B) => B)(zero: B): Map[A, B] = {
-      DataCharacteristicsAccumulatorParam.merge(zero)(f)(s1, s2)
-    }
-
-    override def compact(t: Map[Any, Double]): Map[Any, Double] = {
-      compact(t, TAKE)
-    }
-
-    def compact(t: Map[Any, Double], take: Int): Map[Any, Double] = {
-      t.toSeq.sortBy(-_._2).take(take).toMap
-    }
-  }
-
-  private[spark] object DataCharacteristicsAccumulatorParam {
-    def merge[A, B](zero: B)(f: (B, B) => B)(s1: Map[A, B], s2: Map[A, B]): Map[A, B] = {
-      s1 ++ s2.map{ case (k, v) => k -> f(v, s1.getOrElse(k, zero)) }
-    }
-    def isWeightable[T]()(implicit mf: ClassTag[T]): Boolean =
-      classOf[Weightable] isAssignableFrom mf.runtimeClass
-
-    def className[T]()(implicit mf: ClassTag[T]): String =
-      mf.runtimeClass.getCanonicalName
-  }
-
-  abstract class Weightable {
-    def complexity(): Int
-  }
 }

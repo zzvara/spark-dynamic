@@ -119,10 +119,14 @@ private[spark] class KafkaRDD[K, V](
     }
 
     val buf = new ArrayBuffer[ConsumerRecord[K, V]]
+    /**
+      * @todo Fix job running maybe with stream information.
+      */
     val res = context.runJob(
       this,
       (tc: TaskContext, it: Iterator[ConsumerRecord[K, V]]) =>
-      it.take(parts(tc.partitionId)).toArray, parts.keys.toArray
+      it.take(parts(tc.partitionId)).toArray, parts.keys.toSeq,
+      None
     )
     res.foreach(buf ++= _)
     buf.toArray

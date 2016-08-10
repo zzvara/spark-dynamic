@@ -19,7 +19,7 @@ package org.apache.spark.sql.execution.metric
 
 import java.text.NumberFormat
 
-import org.apache.spark.SparkContext
+import org.apache.spark.{AccumulableParam, SparkContext}
 import org.apache.spark.scheduler.AccumulableInfo
 import org.apache.spark.util.{AccumulatorContext, AccumulatorV2, Utils}
 
@@ -55,8 +55,7 @@ class SQLMetric(val metricType: String, initValue: Long = 0L) extends Accumulato
   override def value: Long = _value
 
   // Provide special identifier as metadata so we can tell that this is a `SQLMetric` later
-  override def toInfo(update: Option[Any], value: Option[Any],
-                      param: Option[AccumulableParam[_, _]] = None): AccumulableInfo = {
+  override private[spark] def toInfo(update: Option[Any], value: Option[Any]): AccumulableInfo = {
     new AccumulableInfo(
       id, name, update, value, true, true, Some(AccumulatorContext.SQL_ACCUM_IDENTIFIER))
   }

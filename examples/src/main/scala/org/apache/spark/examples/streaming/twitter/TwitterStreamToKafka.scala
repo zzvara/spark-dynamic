@@ -12,16 +12,10 @@ import twitter4j.Status
 object TwitterStreamToKafka {
   def main(args: Array[String]): Unit = {
 
-    val cfg = new SparkConf()
-
-    val Array(consumerKey, consumerSecret, accessToken, accessTokenSecret) = args.take(4)
-    System.setProperty("twitter4j.oauth.consumerKey", consumerKey)
-    System.setProperty("twitter4j.oauth.consumerSecret", consumerSecret)
-    System.setProperty("twitter4j.oauth.accessToken", accessToken)
-    System.setProperty("twitter4j.oauth.accessTokenSecret", accessTokenSecret)
+    val cfg = new SparkConf().setJars(Seq(args(1), args(2)))
 
     val ssc = new StreamingContext(cfg, Seconds(2))
-    ssc.checkpoint(args(4))
+    ssc.checkpoint(args(0))
     val stream = TwitterUtils.createStream(ssc, None, Seq())
 
     stream
@@ -29,10 +23,7 @@ object TwitterStreamToKafka {
         rdd.mapPartitions { iterator =>
 
           val props = new Properties()
-          props.put("metadata.broker.list", "localhost:9092")
           props.put("request.required.acks", "1")
-          props.put("serializer.class",
-                    "org.apache.spark.examples.streaming.twitter.TweetSerializer")
 
           val config = new ProducerConfig(props)
 

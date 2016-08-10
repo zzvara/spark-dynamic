@@ -2,7 +2,6 @@
 package org.apache.spark.examples.streaming
 
 import kafka.serializer.StringDecoder
-import org.apache.spark.AccumulatorParam.Weightable
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.SparkConf
 import org.apache.spark.storage.StorageLevel
@@ -59,7 +58,7 @@ class MusicRecord(
   val subsType: String,
   val artists: Seq[Int],
   val albums: Seq[Int])
-extends Weightable with Serializable {
+extends Serializable {
   def this(split: Array[String]) = {
     this(split(0).toLong,
       split(1).toInt,
@@ -72,6 +71,4 @@ extends Weightable with Serializable {
       split(8).split(",").map(_.toInt),
       split(9).split(",").filter(!_.contains("None")).map(_.toInt))
   }
-
-  override def complexity(): Int = tags.size
 }

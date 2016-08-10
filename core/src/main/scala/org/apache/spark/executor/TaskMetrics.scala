@@ -17,20 +17,18 @@
 
 package org.apache.spark.executor
 
-import scala.collection.mutable.{ArrayBuffer, LinkedHashMap}
-import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
-import org.apache.spark.status.api.v1.BlockFetchInfo
-
-import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristics
 import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler.AccumulableInfo
-import org.apache.spark.storage.{BlockId, BlockStatus}
-import org.apache.spark.util.{AccumulatorContext, AccumulatorMetadata, AccumulatorV2, LongAccumulator}
-import org.apache.spark.storage.{BlockResult, BlockId, BlockStatus}
+import org.apache.spark.status.api.v1.BlockFetchInfo
+import org.apache.spark.storage.{BlockId, BlockResult, BlockStatus}
+import org.apache.spark.util._
+
+import scala.collection.mutable.{ArrayBuffer, LinkedHashMap}
+
+import scala.collection.JavaConversions._
+import scala.collection.JavaConverters._
 
 /**
  * :: DeveloperApi ::
@@ -46,7 +44,7 @@ import org.apache.spark.storage.{BlockResult, BlockId, BlockStatus}
  * be sent to the driver.
  */
 @DeveloperApi
-class TaskMetrics private[spark] () extends Serializable {
+class TaskMetrics private[spark] () extends Serializable with Logging {
   // Each metric is internally represented as an accumulator
   private val _executorDeserializeTime = new LongAccumulator
   private val _executorRunTime = new LongAccumulator
@@ -57,23 +55,20 @@ class TaskMetrics private[spark] () extends Serializable {
   private val _diskBytesSpilled = new LongAccumulator
   private val _peakExecutionMemory = new LongAccumulator
   private val _updatedBlockStatuses = new BlockStatusesAccumulator
-  private val _blockFetches = new Accumulator[Seq[BlockFetchnInfos]]
+  private val _blockFetches = new CollectionAccumulator[BlockFetchInfo]
 
   var repartitioningInfo: Option[RepartitioningInfo] = None
 
   private[spark] def addBlockFetch(blockResult: BlockResult) : Unit = {
     if (!blockResult.blockId.isShuffle) {
       logInfo(s"Recording block result ${blockResult.blockId}.")
-      _blockFetches.add(
-        mutable.Seq(new BlockFetchInfo(blockResult.blockId, blockResult.bytes)))
+      _blockFetches.add(new BlockFetchInfo(blockResult.blockId, blockResult.bytes))
     } else {
-      shuffleReadMetrics.foreach {
-        _.addBlockFetch(blockResult)
-      }
+      shuffleReadMetrics.addBlockFetch(blockResult)
     }
   }
 
-  def blockFetchInfos: Seq[BlockFetchInfo] = _blockFetches.localValue
+  def blockFetchInfos: Seq[BlockFetchInfo] = _blockFetches.value.asScala.toSeq
 
   /**
    * Time taken on the executor to deserialize this task.
@@ -209,15 +204,22 @@ class TaskMetrics private[spark] () extends Serializable {
     DISK_BYTES_SPILLED -> _diskBytesSpilled,
     PEAK_EXECUTION_MEMORY -> _peakExecutionMemory,
     UPDATED_BLOCK_STATUSES -> _updatedBlockStatuses,
+    BLOCK_FETCH_INFOS -> _blockFetches,
     shuffleRead.REMOTE_BLOCKS_FETCHED -> shuffleReadMetrics._remoteBlocksFetched,
     shuffleRead.LOCAL_BLOCKS_FETCHED -> shuffleReadMetrics._localBlocksFetched,
     shuffleRead.REMOTE_BYTES_READ -> shuffleReadMetrics._remoteBytesRead,
     shuffleRead.LOCAL_BYTES_READ -> shuffleReadMetrics._localBytesRead,
     shuffleRead.FETCH_WAIT_TIME -> shuffleReadMetrics._fetchWaitTime,
     shuffleRead.RECORDS_READ -> shuffleReadMetrics._recordsRead,
+    shuffleRead.REMOTE_BLOCK_FETCH_INFOS -> shuffleReadMetrics._remoteBlockFetchInfos,
+    shuffleRead.LOCAL_BLOCK_FETCH_INFOS -> shuffleReadMetrics._localBlockFetchInfos,
+    shuffleRead.DATA_CHARACTERISTICS -> shuffleReadMetrics._dataCharacteristics,
     shuffleWrite.BYTES_WRITTEN -> shuffleWriteMetrics._bytesWritten,
     shuffleWrite.RECORDS_WRITTEN -> shuffleWriteMetrics._recordsWritten,
     shuffleWrite.WRITE_TIME -> shuffleWriteMetrics._writeTime,
+    shuffleWrite.REPARTITIONING_TIME -> shuffleWriteMetrics._repartitioningTime,
+    shuffleWrite.INSERTION_TIME -> shuffleWriteMetrics._insertionTime,
+    shuffleWrite.DATA_CHARACTERISTICS -> shuffleWriteMetrics._dataCharacteristics,
     input.BYTES_READ -> inputMetrics._bytesRead,
     input.RECORDS_READ -> inputMetrics._recordsRead,
     output.BYTES_WRITTEN -> outputMetrics._bytesWritten,

@@ -17,15 +17,19 @@
 
 package org.apache.spark.executor
 
+import java.util.ArrayList
+
+import org.apache.spark.AccumulatorParam.ListAccumulatorParam
+import org.apache.spark.SparkEnv
+import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.Logging
 import org.apache.spark.status.api.v1.BlockFetchInfo
 import org.apache.spark.storage.BlockResult
-import org.apache.spark.{SparkEnv, Accumulator, InternalAccumulator}
-import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.util.LongAccumulator
+import org.apache.spark.util.{CollectionAccumulator, DataCharacteristicsAccumulator, LongAccumulator}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.JavaConverters._
 
 /**
  * :: DeveloperApi ::
@@ -33,38 +37,39 @@ import scala.collection.mutable.ArrayBuffer
  * Operations are not thread-safe.
  */
 @DeveloperApi
-class ShuffleReadMetrics private[spark] () extends Serializable {
+class ShuffleReadMetrics private[spark] () extends Serializable with Logging {
   private[executor] val _remoteBlocksFetched = new LongAccumulator
-  private[executor] val _remoteBlockFetchInfos = new Accumulator[Seq[BlockFetchInfo]]
+  private[executor] val _remoteBlockFetchInfos = new CollectionAccumulator[BlockFetchInfo]
   private[executor] val _localBlocksFetched = new LongAccumulator
-  private[executor] val _localBlockFetchInfos = new Accumulator[Seq[BlockFetchInfo]]
+  private[executor] val _localBlockFetchInfos = new CollectionAccumulator[BlockFetchInfo]
   private[executor] val _remoteBytesRead = new LongAccumulator
   private[executor] val _localBytesRead = new LongAccumulator
   private[executor] val _fetchWaitTime = new LongAccumulator
   private[executor] val _recordsRead = new LongAccumulator
+  private[executor] val _dataCharacteristics = new DataCharacteristicsAccumulator
 
   val recordCharacteristics: Boolean =
     SparkEnv.get.conf.getBoolean("spark.metrics.shuffleRead.dataCharacteristics", true)
 
-  def dataCharacteristics(): Seq[(Any, Int)] = _dataCharacteristics.localValue
-
-  def setDataCharacteristics(s: Map[Any, Double]) : Unit = {
-    _dataCharacteristics.setValue(s)
-  }
+  def dataCharacteristics(): DataCharacteristicsAccumulator = _dataCharacteristics
 
   private[spark] def recordIterator(iter: Iterator[(_, _)]): Iterator[(_, _)] = {
     if (recordCharacteristics) {
       iter.map {
         pair =>
-          _dataCharacteristics.add(Map[Any, Double](pair._1 -> 1.0))
+          _dataCharacteristics.add(pair._1 -> 1.0)
           pair
       }
     } else {
       iter
     }
   }
+
+  /**
+    * @todo Fix.
+    */
   def compact(): Unit = {
-    _dataCharacteristics.compact()
+
   }
 
   private[spark] def addBlockFetch(blockResult: BlockResult) : Unit = {
@@ -72,22 +77,21 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
     blockResult.loc match {
       case Some(loc) =>
         _remoteBlockFetchInfos.add(
-          mutable.Seq(new BlockFetchInfo(blockResult.blockId,
+          new BlockFetchInfo(blockResult.blockId,
             blockResult.bytes,
             Some(loc.executorId),
-            Some(loc.host))))
+            Some(loc.host)))
       case _ =>
-        _localBlockFetchInfos.add(
-          mutable.Seq(new BlockFetchInfo(blockResult.blockId,
-            blockResult.bytes)))
+        _localBlockFetchInfos.add(new BlockFetchInfo(blockResult.blockId,
+            blockResult.bytes))
     }
   }
 
   private[spark] def addBlockFetch(blockFetchInfo: BlockFetchInfo) : Unit = {
     logDebug(s"Recording shuffle block fetch ${blockFetchInfo.blockId}.")
     blockFetchInfo.host match {
-      case Some(host) => _remoteBlockFetchInfos.add(mutable.Seq(blockFetchInfo))
-      case _ => _localBlockFetchInfos.add(mutable.Seq(blockFetchInfo))
+      case Some(host) => _remoteBlockFetchInfos.add(blockFetchInfo)
+      case _ => _localBlockFetchInfos.add(blockFetchInfo)
     }
   }
 
@@ -99,7 +103,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   /**
     * @todo What?
     */
-  def remoteBlockFetchInfos(): Seq[BlockFetchInfo] = _remoteBlockFetchInfos.localValue
+  def remoteBlockFetchInfos(): Seq[BlockFetchInfo] = _remoteBlockFetchInfos.value.asScala.toSeq
 
   /**
    * Number of local blocks fetched in this shuffle by this task.
@@ -109,7 +113,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   /**
     * @todo What?
     */
-  def localBlockFetchInfos(): Seq[BlockFetchInfo] = _localBlockFetchInfos.localValue
+  def localBlockFetchInfos(): Seq[BlockFetchInfo] = _localBlockFetchInfos.value.asScala.toSeq
 
   /**
    * Total number of remote bytes read from the shuffle by this task.
@@ -156,10 +160,16 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   private[spark] def setLocalBytesRead(v: Long): Unit = _localBytesRead.setValue(v)
   private[spark] def setFetchWaitTime(v: Long): Unit = _fetchWaitTime.setValue(v)
   private[spark] def setRecordsRead(v: Long): Unit = _recordsRead.setValue(v)
-  private[spark] def setRemoteBlockFetchInfos(s: ArrayBuffer[BlockFetchInfo]): Unit =
-    _remoteBlockFetchInfos.setValue(s)
-  private[spark] def setLocalBlockFetchInfos(s: ArrayBuffer[BlockFetchInfo]): Unit =
-    _localBlockFetchInfos.setValue(s)
+  private[spark] def setRemoteBlockFetchInfos(s: ArrayBuffer[BlockFetchInfo]): Unit = {
+    s.foreach {
+      _remoteBlockFetchInfos.add(_)
+    }
+  }
+  private[spark] def setLocalBlockFetchInfos(s: ArrayBuffer[BlockFetchInfo]): Unit = {
+    s.foreach {
+      _localBlockFetchInfos.add(_)
+    }
+  }
 
   /**
    * Resets the value of the current metrics (`this`) and and merges all the independent
@@ -189,25 +199,57 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
  * shuffle dependency, and all temporary metrics will be merged into the [[ShuffleReadMetrics]] at
  * last.
  */
-private[spark] class TempShuffleReadMetrics {
+private[spark] class TempShuffleReadMetrics extends Logging {
   private[this] var _remoteBlocksFetched = 0L
+  private[this] var _remoteBlockFetchInfos = new ArrayList[BlockFetchInfo]()
   private[this] var _localBlocksFetched = 0L
+  private[this] var _localBlockFetchInfos = new ArrayList[BlockFetchInfo]()
   private[this] var _remoteBytesRead = 0L
   private[this] var _localBytesRead = 0L
   private[this] var _fetchWaitTime = 0L
   private[this] var _recordsRead = 0L
+  private[this] var _dataCharacteristics = new DataCharacteristicsAccumulator
+
 
   def incRemoteBlocksFetched(v: Long): Unit = _remoteBlocksFetched += v
+  def addRemoteBlockFetchInfo(v: BlockFetchInfo): Unit = _remoteBlockFetchInfos.add(v)
   def incLocalBlocksFetched(v: Long): Unit = _localBlocksFetched += v
+  def addLocalBlockFetchInfo(v: BlockFetchInfo): Unit = _localBlockFetchInfos.add(v)
   def incRemoteBytesRead(v: Long): Unit = _remoteBytesRead += v
   def incLocalBytesRead(v: Long): Unit = _localBytesRead += v
   def incFetchWaitTime(v: Long): Unit = _fetchWaitTime += v
   def incRecordsRead(v: Long): Unit = _recordsRead += v
 
+  private[spark] def addBlockFetch(blockFetchInfo: BlockFetchInfo) : Unit = {
+    logDebug(s"Recording shuffle block fetch ${blockFetchInfo.blockId}.")
+    blockFetchInfo.host match {
+      case Some(host) => _remoteBlockFetchInfos.add(blockFetchInfo)
+      case _ => _localBlockFetchInfos.add(blockFetchInfo)
+    }
+  }
+
   def remoteBlocksFetched: Long = _remoteBlocksFetched
+  def remoteBlockFetchInfos: java.util.List[BlockFetchInfo] = _remoteBlockFetchInfos
   def localBlocksFetched: Long = _localBlocksFetched
+  def localBlockFetchInfos: java.util.List[BlockFetchInfo] = _localBlockFetchInfos
   def remoteBytesRead: Long = _remoteBytesRead
   def localBytesRead: Long = _localBytesRead
   def fetchWaitTime: Long = _fetchWaitTime
   def recordsRead: Long = _recordsRead
+
+  val recordCharacteristics: Boolean =
+    SparkEnv.get.conf.getBoolean("spark.metrics.shuffleRead.dataCharacteristics", true)
+
+  private[spark] def recordIterator(iter: Iterator[(_, _)]): Iterator[(_, _)] = {
+    if (recordCharacteristics) {
+      iter.map {
+        pair =>
+          _dataCharacteristics.add(pair._1 -> 1.0)
+          pair
+      }
+    } else {
+      iter
+    }
+  }
+
 }

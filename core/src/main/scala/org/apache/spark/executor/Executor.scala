@@ -277,8 +277,8 @@ private[spark] class Executor(
             taskId,
             attemptNumber,
             taskMemoryManager,
-            env.metricsSystem,
-            task.initialAccumulators)
+            task.localProperties,
+            env.metricsSystem)
           SparkEnv.get.repartitioningWorker() match {
             case Some(trackerWorker) =>
               trackerWorker.asInstanceOf[RepartitioningTrackerWorker].taskArrival(
@@ -339,8 +339,8 @@ private[spark] class Executor(
         task.metrics.setExecutorRunTime((taskFinish - taskStart) - task.executorDeserializeTime)
         task.metrics.setJvmGCTime(computeTotalGcTime() - startGCTime)
         task.metrics.setResultSerializationTime(afterSerialization - beforeSerialization)
-        task.metrics.shuffleWriteMetrics.foreach(_.compact())
-        task.metrics.shuffleReadMetrics.foreach(_.compact())
+        task.metrics.shuffleWriteMetrics.compact()
+        task.metrics.shuffleReadMetrics.compact()
 
         // Note: accumulator updates must be collected after TaskMetrics is updated
         val accumUpdates = task.collectAccumulatorUpdates()

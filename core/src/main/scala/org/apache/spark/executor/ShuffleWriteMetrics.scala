@@ -17,11 +17,9 @@
 
 package org.apache.spark.executor
 
-import org.apache.spark.AccumulatorParam.DataCharacteristicsAccumulatorParam
-import org.apache.spark.executor.ShuffleWriteMetrics.DataCharacteristics
-import org.apache.spark.{Accumulator, InternalAccumulator, Partitioner}
+import org.apache.spark.{Accumulator, Partitioner}
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.util.LongAccumulator
+import org.apache.spark.util.{DataCharacteristicsAccumulator, LongAccumulator}
 import org.apache.spark.internal.ColorfulLogging
 import org.apache.spark.scheduler.AccumulableInfo
 
@@ -38,7 +36,7 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   private[executor] val _writeTime = new LongAccumulator
   private[executor] val _repartitioningTime = new LongAccumulator
   private[executor] val _insertionTime = new LongAccumulator
-  private[executor] val _dataCharacteristics = new Accumulator[Seq[(Any, Int)]]
+  private[executor] val _dataCharacteristics = new DataCharacteristicsAccumulator
 
   private var _repartitioner: Option[Partitioner] = None
   private var _repartitioningIsFinished = false
@@ -70,10 +68,13 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
     }
   }
 
-  def dataCharacteristics: DataCharacteristics[Any] = _dataCharacteristics
+  def dataCharacteristics: DataCharacteristicsAccumulator = _dataCharacteristics
 
+  /**
+    * @todo Compact data characteristics.
+    */
   def compact(): Unit = {
-    _dataCharacteristics.compact()
+
   }
 
   /**
@@ -94,13 +95,14 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   /**
    * Time the task spent repartitioning the previously written data.
    */
-  def repartitioningTime: Long = _repartitioningTime.localValue
+  def repartitioningTime: Long = _repartitioningTime.sum
 
-  def insertionTime: Long = _insertionTime.localValue
+  def insertionTime: Long = _insertionTime.sum
 
   private[spark] def addKeyWritten(k: Any, complexity: Int): Unit = {
-    _dataCharacteristics.add(Map[Any, Double]((k, complexity) -> 1.0))
+    _dataCharacteristics.add((k, complexity) -> 1.0)
   }
+
   private[spark] def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)
   private[spark] def incWriteTime(v: Long): Unit = _writeTime.add(v)
@@ -123,11 +125,6 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   def shuffleRecordsWritten: Long = recordsWritten
 }
 
-object ShuffleWriteMetrics {
-  type DataCharacteristics[T] = Accumulator[Map[T, Double]]
-  type DataCharacteristicsInfo = AccumulableInfo
-}
-
 class RepartitioningInfo(
   val stageID: Int,
   val taskID: Long,
@@ -146,10 +143,8 @@ class RepartitioningInfo(
     logInfo(s"Updated repartitioner for stage:$stageID-task:$taskID.\n\tNew repartitioner: $repartitioner, new version: $version.", "yellow")
   }
 
-  def getHistogramMeta: Option[DataCharacteristicsAccumulatorParam] = {
-    taskMetrics.shuffleWriteMetrics.map {
-      _.dataCharacteristics.getParam.asInstanceOf[DataCharacteristicsAccumulatorParam]
-    }
+  def getHistogramMeta: DataCharacteristicsAccumulator = {
+    taskMetrics.shuffleWriteMetrics.dataCharacteristics
   }
 
   def finishTracking(): Unit = {

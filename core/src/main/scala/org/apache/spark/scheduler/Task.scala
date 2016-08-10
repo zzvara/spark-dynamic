@@ -50,13 +50,14 @@ import org.apache.spark.util.{AccumulatorV2, ByteBufferInputStream, ByteBufferOu
  * @param metrics a [[TaskMetrics]] that is created at driver side and sent to executor side.
  * @param localProperties copy of thread-local properties set by the user on the driver side.
  */
-private[spark] abstract class Task[T](
+private[spark] abstract class Task[T] (
     val stageId: Int,
     val stageAttemptId: Int,
     val partitionId: Int,
     // The default value is only used in tests.
     val metrics: TaskMetrics = TaskMetrics.registered,
-    @transient var localProperties: Properties = new Properties) extends Serializable {
+    @transient var localProperties: Properties = new Properties)
+extends Serializable with Logging {
 
   /**
    * Called by [[org.apache.spark.executor.Executor]] to run this task.

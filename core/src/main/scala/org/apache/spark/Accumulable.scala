@@ -160,11 +160,6 @@ class Accumulable[R, T] private (
   }
 
   override def toString: String = if (newAcc._value == null) "null" else newAcc._value.toString
-
-  def compact() {
-    val temp = param.compact(value_)
-    value_ = temp
-  }
 }
 
 

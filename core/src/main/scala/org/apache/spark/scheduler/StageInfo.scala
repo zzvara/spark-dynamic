@@ -85,10 +85,11 @@ class ShuffleStageInfo(
     rddInfos: Seq[RDDInfo],
     parentIds: Seq[Int],
     details: String,
+    taskMetrics: TaskMetrics,
     taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty,
     partitioner: Option[Partitioner] = None)
   extends StageInfo(stageId, jobId, attemptId, name, numTasks, shuffleId, rddInfos,
-    parentIds, details, taskLocalityPreferences, partitioner)
+    parentIds, details, taskMetrics, taskLocalityPreferences, partitioner)
 
 @DeveloperApi
 class ResultStageInfo(
@@ -101,10 +102,11 @@ class ResultStageInfo(
     rddInfos: Seq[RDDInfo],
     parentIds: Seq[Int],
     details: String,
+    taskMetrics: TaskMetrics,
     taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty,
     partitioner: Option[Partitioner] = None)
   extends StageInfo(stageId, jobId, attemptId, name, numTasks, shuffleId, rddInfos,
-    parentIds, details, taskLocalityPreferences, partitioner)
+    parentIds, details, taskMetrics, taskLocalityPreferences, partitioner)
 
 private[spark] object StageInfo {
   /**

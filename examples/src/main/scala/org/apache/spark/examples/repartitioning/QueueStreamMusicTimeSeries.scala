@@ -1,6 +1,5 @@
 package org.apache.spark.examples.repartitioning
 
-import org.apache.spark.AccumulatorParam.Weightable
 import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.{Seconds, StreamingContext}
@@ -81,7 +80,7 @@ class MusicRecord(
   val subsType: String,
   val artists: Seq[Int],
   val albums: Seq[Int])
-  extends Weightable with Serializable {
+  extends Serializable {
   def this(split: Array[String]) = {
     this(split(0).toLong,
       split(1).toInt,
@@ -94,9 +93,6 @@ class MusicRecord(
       split(8).split(",").map(_.toInt),
       split(9).split(",").filter(!_.contains("None")).map(_.toInt))
   }
-
-  override def complexity(): Int = tags.size
-
   override def toString: String = {
     s"(time: $time, userID: $userID, trackID: $trackID, playtime: $playtime, sessionID: $sessionID," +
       s" playlists: $playlists, tags: $tags, subsType: $subsType, artists: $artists, albums: $albums)"

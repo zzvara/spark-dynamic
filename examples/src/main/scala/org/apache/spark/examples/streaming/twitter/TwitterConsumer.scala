@@ -2,7 +2,6 @@
 package org.apache.spark.examples.streaming.twitter
 
 import kafka.serializer.StringDecoder
-import org.apache.spark.AccumulatorParam.Weightable
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.SparkConf
 import org.apache.spark.storage.StorageLevel

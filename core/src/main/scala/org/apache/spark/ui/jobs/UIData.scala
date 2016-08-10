@@ -19,12 +19,12 @@ package org.apache.spark.ui.jobs
 
 import scala.collection.mutable
 import scala.collection.mutable.HashMap
-
 import org.apache.spark.JobExecutionStatus
 import org.apache.spark.executor.{ShuffleReadMetrics, ShuffleWriteMetrics, TaskMetrics}
 import org.apache.spark.scheduler.{AccumulableInfo, TaskInfo}
+import org.apache.spark.status.api.v1.BlockFetchInfo
 import org.apache.spark.storage.{BlockId, BlockStatus}
-import org.apache.spark.util.AccumulatorContext
+import org.apache.spark.util.{AccumulatorContext, DataCharacteristicsAccumulator}
 import org.apache.spark.util.collection.OpenHashSet
 
 private[spark] object UIData {
@@ -111,7 +111,7 @@ private[spark] object UIData {
    * These are kept mutable and reused throughout a task's lifetime to avoid excessive reallocation.
    */
   class TaskUIData private(
-      private var stageId: Int,
+      var stageId: Int,
       private var _taskInfo: TaskInfo,
       private var _metrics: Option[TaskMetricsUIData]) {
 
@@ -131,8 +131,14 @@ private[spark] object UIData {
   }
 
   object TaskUIData {
-    def apply(taskInfo: TaskInfo, metrics: Option[TaskMetrics]): TaskUIData = {
-      new TaskUIData(dropInternalAndSQLAccumulables(taskInfo), toTaskMetricsUIData(metrics))
+    def apply(stageId: Int, taskInfo: TaskInfo, metrics: Option[TaskMetrics]): TaskUIData = {
+      /**
+        * @todo Fix.
+        */
+      new TaskUIData(
+        stageId,
+        dropInternalAndSQLAccumulables(taskInfo),
+        toTaskMetricsUIData(metrics))
     }
 
     private def toTaskMetricsUIData(metrics: Option[TaskMetrics]): Option[TaskMetricsUIData] = {
@@ -151,7 +157,8 @@ private[spark] object UIData {
           outputMetrics =
             OutputMetricsUIData(m.outputMetrics.bytesWritten, m.outputMetrics.recordsWritten),
           shuffleReadMetrics = ShuffleReadMetricsUIData(m.shuffleReadMetrics),
-          shuffleWriteMetrics = ShuffleWriteMetricsUIData(m.shuffleWriteMetrics))
+          shuffleWriteMetrics = ShuffleWriteMetricsUIData(m.shuffleWriteMetrics),
+          blockFetchInfos = m.blockFetchInfos)
       }
     }
 
@@ -195,6 +202,7 @@ private[spark] object UIData {
       diskBytesSpilled: Long,
       peakExecutionMemory: Long,
       updatedBlockStatuses: Seq[(BlockId, BlockStatus)],
+      blockFetchInfos: Seq[BlockFetchInfo],
       inputMetrics: InputMetricsUIData,
       outputMetrics: OutputMetricsUIData,
       shuffleReadMetrics: ShuffleReadMetricsUIData,
@@ -206,25 +214,31 @@ private[spark] object UIData {
 
   case class ShuffleReadMetricsUIData(
       remoteBlocksFetched: Long,
+      remoteBlockFetchInfos: Seq[BlockFetchInfo],
       localBlocksFetched: Long,
+      localBlockFetchInfos: Seq[BlockFetchInfo],
       remoteBytesRead: Long,
       localBytesRead: Long,
       fetchWaitTime: Long,
       recordsRead: Long,
       totalBytesRead: Long,
-      totalBlocksFetched: Long)
+      totalBlocksFetched: Long,
+      dataCharacteristics: Map[Any, Double])
 
   object ShuffleReadMetricsUIData {
     def apply(metrics: ShuffleReadMetrics): ShuffleReadMetricsUIData = {
       new ShuffleReadMetricsUIData(
         remoteBlocksFetched = metrics.remoteBlocksFetched,
+        remoteBlockFetchInfos = metrics.remoteBlockFetchInfos(),
         localBlocksFetched = metrics.localBlocksFetched,
+        localBlockFetchInfos = metrics.remoteBlockFetchInfos(),
         remoteBytesRead = metrics.remoteBytesRead,
         localBytesRead = metrics.localBytesRead,
         fetchWaitTime = metrics.fetchWaitTime,
         recordsRead = metrics.recordsRead,
         totalBytesRead = metrics.totalBytesRead,
-        totalBlocksFetched = metrics.totalBlocksFetched
+        totalBlocksFetched = metrics.totalBlocksFetched,
+        dataCharacteristics = metrics.dataCharacteristics().value
       )
     }
   }
@@ -232,14 +246,20 @@ private[spark] object UIData {
   case class ShuffleWriteMetricsUIData(
       bytesWritten: Long,
       recordsWritten: Long,
-      writeTime: Long)
+      writeTime: Long,
+      repartitioningTime: Long,
+      insertionTime: Long,
+      dataCharacteristics: DataCharacteristicsAccumulator)
 
   object ShuffleWriteMetricsUIData {
     def apply(metrics: ShuffleWriteMetrics): ShuffleWriteMetricsUIData = {
       new ShuffleWriteMetricsUIData(
         bytesWritten = metrics.bytesWritten,
         recordsWritten = metrics.recordsWritten,
-        writeTime = metrics.writeTime
+        writeTime = metrics.writeTime,
+        repartitioningTime = metrics.repartitioningTime,
+        insertionTime = metrics.insertionTime,
+        dataCharacteristics = metrics.dataCharacteristics
       )
     }
   }
