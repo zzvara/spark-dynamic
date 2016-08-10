@@ -205,6 +205,7 @@ class TaskMetrics private[spark] () extends Serializable with Logging {
     PEAK_EXECUTION_MEMORY -> _peakExecutionMemory,
     UPDATED_BLOCK_STATUSES -> _updatedBlockStatuses,
     BLOCK_FETCH_INFOS -> _blockFetches,
+
     shuffleRead.REMOTE_BLOCKS_FETCHED -> shuffleReadMetrics._remoteBlocksFetched,
     shuffleRead.LOCAL_BLOCKS_FETCHED -> shuffleReadMetrics._localBlocksFetched,
     shuffleRead.REMOTE_BYTES_READ -> shuffleReadMetrics._remoteBytesRead,
