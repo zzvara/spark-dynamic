@@ -584,6 +584,10 @@ extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Logging {
   override def value: Map[Any, Double] = {
     scala.collection.immutable.HashMap[Any, Double]() ++ _map
   }
+
+  def setValue(newMap: mutable.Map[Any, Double]) = {
+    _map = newMap
+  }
 }
 
 abstract class Weightable {

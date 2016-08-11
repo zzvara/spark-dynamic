@@ -17,11 +17,12 @@
 
 package org.apache.spark.executor
 
-import org.apache.spark.{Accumulator, Partitioner}
+import org.apache.spark.Partitioner
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.util.{DataCharacteristicsAccumulator, LongAccumulator}
 import org.apache.spark.internal.ColorfulLogging
-import org.apache.spark.scheduler.AccumulableInfo
+import org.apache.spark.util.{DataCharacteristicsAccumulator, LongAccumulator}
+
+import scala.collection.mutable
 
 
 /**
@@ -48,6 +49,10 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
     val result = _repartitioner
     _repartitioner = None
     result
+  }
+
+  private[spark] def setDataCharacteristics(s: Map[Any, Double]): Unit = {
+    _dataCharacteristics.setValue(mutable.Map[Any, Double]() ++ s)
   }
 
   private[spark] def setRepartitioner(repartitioner: Partitioner) {

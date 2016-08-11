@@ -17,13 +17,6 @@
 
 package org.apache.spark
 
-import org.apache.spark.status.api.v1.BlockFetchInfo
-import org.apache.spark.storage.{BlockId, BlockStatus}
-
-import scala.collection.immutable.HashMap
-import scala.collection.mutable.ArrayBuffer
-
-
 /**
  * A collection of fields and methods concerned with internal accumulators that represent
  * task level metrics.

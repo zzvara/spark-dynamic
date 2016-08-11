@@ -278,7 +278,8 @@ private[spark] class Executor(
             attemptNumber,
             taskMemoryManager,
             task.localProperties,
-            env.metricsSystem)
+            env.metricsSystem,
+            task.metrics)
           SparkEnv.get.repartitioningWorker() match {
             case Some(trackerWorker) =>
               trackerWorker.asInstanceOf[RepartitioningTrackerWorker].taskArrival(

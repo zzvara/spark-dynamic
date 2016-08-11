@@ -22,7 +22,7 @@ object TwitterStreamToKafka {
       .foreachRDD { rdd =>
         rdd.mapPartitions { iterator =>
 
-          val props = new Properties()
+          val props = System.getProperties
           props.put("request.required.acks", "1")
 
           val config = new ProducerConfig(props)

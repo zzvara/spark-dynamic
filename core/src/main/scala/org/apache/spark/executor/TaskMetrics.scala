@@ -17,6 +17,9 @@
 
 package org.apache.spark.executor
 
+import java.util
+
+import org.apache.spark.InternalAccumulator.{input => _, _}
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.Logging
@@ -26,7 +29,6 @@ import org.apache.spark.storage.{BlockId, BlockResult, BlockStatus}
 import org.apache.spark.util._
 
 import scala.collection.mutable.{ArrayBuffer, LinkedHashMap}
-
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
 
@@ -68,7 +70,7 @@ class TaskMetrics private[spark] () extends Serializable with Logging {
     }
   }
 
-  def blockFetchInfos: Seq[BlockFetchInfo] = _blockFetches.value.asScala.toSeq
+  def blockFetchInfos: Seq[BlockFetchInfo] = _blockFetches.value.asScala
 
   /**
    * Time taken on the executor to deserialize this task.
@@ -133,6 +135,8 @@ class TaskMetrics private[spark] () extends Serializable with Logging {
     _updatedBlockStatuses.add(v)
   private[spark] def setUpdatedBlockStatuses(v: Seq[(BlockId, BlockStatus)]): Unit =
     _updatedBlockStatuses.setValue(v)
+  private[spark] def setBlockFetches(v: util.List[BlockFetchInfo]): Unit =
+    _blockFetches.setValue(v)
 
   /**
    * Metrics related to reading data from a [[org.apache.spark.rdd.HadoopRDD]] or from persisted
@@ -205,7 +209,6 @@ class TaskMetrics private[spark] () extends Serializable with Logging {
     PEAK_EXECUTION_MEMORY -> _peakExecutionMemory,
     UPDATED_BLOCK_STATUSES -> _updatedBlockStatuses,
     BLOCK_FETCH_INFOS -> _blockFetches,
-
     shuffleRead.REMOTE_BLOCKS_FETCHED -> shuffleReadMetrics._remoteBlocksFetched,
     shuffleRead.LOCAL_BLOCKS_FETCHED -> shuffleReadMetrics._localBlocksFetched,
     shuffleRead.REMOTE_BYTES_READ -> shuffleReadMetrics._remoteBytesRead,
@@ -283,12 +286,31 @@ private[spark] object TaskMetrics extends Logging {
     infos.filter(info => info.name.isDefined && info.update.isDefined).foreach { info =>
       val name = info.name.get
       val value = info.update.get
-      if (name == UPDATED_BLOCK_STATUSES) {
-        tm.setUpdatedBlockStatuses(value.asInstanceOf[Seq[(BlockId, BlockStatus)]])
-      } else {
-        tm.nameToAccums.get(name).foreach(
-          _.asInstanceOf[LongAccumulator].setValue(value.asInstanceOf[Long])
-        )
+      name match {
+        case UPDATED_BLOCK_STATUSES =>
+          tm.setUpdatedBlockStatuses(value.asInstanceOf[Seq[(BlockId, BlockStatus)]])
+        case BLOCK_FETCH_INFOS =>
+          tm.setBlockFetches(value.asInstanceOf[util.List[BlockFetchInfo]])
+        case shuffleRead.REMOTE_BLOCK_FETCH_INFOS =>
+          tm.shuffleReadMetrics.setRemoteBlockFetchInfos(
+            value.asInstanceOf[util.List[BlockFetchInfo]]
+          )
+        case shuffleRead.LOCAL_BLOCK_FETCH_INFOS =>
+          tm.shuffleReadMetrics.setLocalBlockFetchInfos(
+            value.asInstanceOf[util.List[BlockFetchInfo]]
+          )
+        case shuffleRead.DATA_CHARACTERISTICS =>
+          tm.shuffleReadMetrics.setDataCharacteristics(
+            value.asInstanceOf[Map[Any, Double]]
+          )
+        case shuffleWrite.DATA_CHARACTERISTICS =>
+          tm.shuffleWriteMetrics.setDataCharacteristics(
+            value.asInstanceOf[Map[Any, Double]]
+          )
+        case _ =>
+          tm.nameToAccums.get(name).foreach(
+            _.asInstanceOf[LongAccumulator].setValue(value.asInstanceOf[Long])
+          )
       }
     }
     tm

@@ -160,15 +160,19 @@ class ShuffleReadMetrics private[spark] () extends Serializable with Logging {
   private[spark] def setLocalBytesRead(v: Long): Unit = _localBytesRead.setValue(v)
   private[spark] def setFetchWaitTime(v: Long): Unit = _fetchWaitTime.setValue(v)
   private[spark] def setRecordsRead(v: Long): Unit = _recordsRead.setValue(v)
-  private[spark] def setRemoteBlockFetchInfos(s: ArrayBuffer[BlockFetchInfo]): Unit = {
-    s.foreach {
-      _remoteBlockFetchInfos.add(_)
+  private[spark] def setRemoteBlockFetchInfos(s: java.util.List[BlockFetchInfo]): Unit = {
+    s.asScala.foreach {
+      _remoteBlockFetchInfos.add
     }
   }
-  private[spark] def setLocalBlockFetchInfos(s: ArrayBuffer[BlockFetchInfo]): Unit = {
-    s.foreach {
-      _localBlockFetchInfos.add(_)
+  private[spark] def setLocalBlockFetchInfos(s: java.util.List[BlockFetchInfo]): Unit = {
+    s.asScala.foreach {
+      _localBlockFetchInfos.add
     }
+  }
+
+  private[spark] def setDataCharacteristics(s: Map[Any, Double]): Unit = {
+    _dataCharacteristics.setValue(mutable.Map[Any, Double]() ++ s)
   }
 
   /**
