@@ -25,7 +25,7 @@ object TwitterConsumer {
       "auto.offset.reset" -> "smallest"
     )
     val topics = Map("twitter" -> 1)
-
+/*
     val records =
       KafkaUtils.createStream[String, Status, StringDecoder, StatusDecoder](
         ssc, kafkaParams, topics, StorageLevel.MEMORY_ONLY
@@ -49,7 +49,7 @@ object TwitterConsumer {
     }
     .count()
     .print()
-
+*/
     ssc.start()
     ssc.awaitTermination()
   }

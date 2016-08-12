@@ -1,13 +1,18 @@
 
 package org.apache.spark.examples.streaming.twitter
 
-import kafka.serializer.Encoder
-import kafka.utils.VerifiableProperties
+import java.util
+
 import org.apache.commons.lang.SerializationUtils
+import org.apache.kafka.common.serialization.Serializer
 import twitter4j.Status
 
-class TweetSerializer(props: VerifiableProperties = null) extends Encoder[Status] {
-  override def toBytes(t: Status): Array[Byte] = {
-    SerializationUtils.serialize(t)
+class TweetSerializer() extends Serializer[Status] {
+  override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {}
+
+  override def serialize(topic: String, data: Status): Array[Byte] = {
+    SerializationUtils.serialize(data)
   }
+
+  override def close(): Unit = {}
 }
