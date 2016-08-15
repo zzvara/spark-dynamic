@@ -67,6 +67,8 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
 
   private val _jobData = mutable.HashMap[Int, MasterJobData]()
 
+  private var isInitialized = false
+
   /**
     * For streaming mini-batches only.
     *
@@ -114,6 +116,11 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
     }
 
     val outputStreams = StreamingContext.getActive().get.graph.getOutputStreams()
+
+    if(!isInitialized) {
+      StreamingUtils.initialize(StreamingContext.getActive().get.graph.getOutputStreams())
+      isInitialized = true
+    }
 
     /**
       * Job properties should be set by the RDD's properties on job submission.
@@ -194,14 +201,36 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
     }
   }
 
+  private def updatePartitionMetrics(
+    stream: Stream,
+    taskInfo: TaskInfo,
+    recordsRead: Long
+  ): Unit = {
+    _streamData.find {
+      _._2.hasParent(stream.ID)
+    } match {
+      case Some((sID, streamData)) =>
+        logInfo(s"Updating partition metrics for task ${taskInfo.taskId} " +
+          s"in stream ${stream.ID}.")
+        val id = stream.ID
+        streamData.strategies.getOrElseUpdate(id, new StreamingStrategy(stream.ID, stream,
+          getNumberOfPartitions(stream.ID)))
+          .asInstanceOf[StreamingStrategy].onPartitionMetricsArrival(taskInfo.index, recordsRead)
+      case None => logWarning(
+        s"Could not update local histogram for streaming," +
+          s" since streaming data does not exist for DStream" +
+          s" ID ${stream.ID}!")
+    }
+  }
+
   private def getNumberOfPartitions(streamID: Int): Int = {
-    StreamingUtils.lookupStreamChildrenReqursively(streamID,
-      StreamingContext.getActive().get.graph.getOutputStreams()) match {
-      case Some(dStream) => dStream match {
+    // Only one children is assumed
+    StreamingUtils.getChildren(streamID) match {
+      case head :: tail => head match {
         case sds: ShuffledDStream[_, _, _] => sds.partitioner.numPartitions
         case _ => throw new SparkException("Not a shuffled DStream!")
       }
-      case None =>
+      case Nil =>
         throw new SparkException("DStream not found in DStreamGraph!")
     }
   }
@@ -226,23 +255,34 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
     */
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
     this.synchronized {
-      if (taskEnd.taskType != "ResultTask") {
-        taskEnd.taskInfo.stageProperties.flatMap(
-          _.get("stream").asInstanceOf[Option[Stream]]
-        ) match {
-          case Some(stream) =>
+      taskEnd.taskInfo.stageProperties.flatMap(
+        _.get("stream").asInstanceOf[Option[Stream]]
+      ) match {
+        case Some(stream) =>
+          StreamingUtils.updateStreamIDToStreamMap(stream.ID, stream)
+          if (taskEnd.taskType != "ResultTask") {
             val streamID = stream.ID
             logInfo(s"Task ended with DStream ID of $streamID.")
             val shuffleWriteMetrics = taskEnd.taskMetrics.shuffleWriteMetrics
-                val size = shuffleWriteMetrics.dataCharacteristics.value.size
-                val recordsPassed = shuffleWriteMetrics.dataCharacteristics.recordsPassed
-                logInfo(s"DataCharacteristics size is $size with $recordsPassed records passed.")
-                updateLocalHistogramForStreaming(
-                  stream,
-                  taskEnd.taskInfo,
-                  shuffleWriteMetrics.dataCharacteristics)
-          case None => super.onTaskEnd(taskEnd)
-        }
+            val size = shuffleWriteMetrics.dataCharacteristics.value.size
+            val recordsPassed = shuffleWriteMetrics.dataCharacteristics.recordsPassed
+            logInfo(s"DataCharacteristics size is $size with $recordsPassed records passed.")
+            updateLocalHistogramForStreaming(
+              stream,
+              taskEnd.taskInfo,
+              shuffleWriteMetrics.dataCharacteristics)
+          }
+          val shuffleReadMetrics = taskEnd.taskMetrics.shuffleReadMetrics
+          val recordsRead = shuffleReadMetrics.recordsRead
+          if (recordsRead > 0) {
+            StreamingUtils.getShuffleHead(StreamingUtils.getDStream(stream.ID)) match {
+              case Some(shuffleHead) => StreamingUtils.getParents(shuffleHead).foreach(s => updatePartitionMetrics(s,
+                taskEnd.taskInfo, recordsRead))
+              case None => throw new RuntimeException(s"Cannot find shuffle head for stream $stream")
+            }
+          }
+        case None =>
+          super.onTaskEnd(taskEnd)
       }
     }
   }
@@ -270,9 +310,9 @@ class StreamingStrategy(
   var numPartitions: Int,
   val perBatchSamplingRate: Int = 5) extends Decider(streamID) {
   private val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
-  //  private val histogramComparisionTreshold = 0.1d
-  //  private val partitionHistogram = mutable.HashMap[Int, Long]()
-  //  private var latestPartitioningInfo: Option[PartitioningInfo] = None
+  private val histogramComparisionTreshold = 0.01d
+  private val partitionHistogram = mutable.HashMap[Int, Long]()
+  private var latestPartitioningInfo: Option[PartitioningInfo] = None
 
   def zeroTime: Time = stream.time
 
@@ -289,49 +329,54 @@ class StreamingStrategy(
     }
   }
 
-  //  def onPartitionMetricsArrival(partitionID: Int, recordsRead: Long): Unit = {
-  //    this.synchronized {
-  //      logInfo(s"Recording metrics for partition $partitionID.",
-  //        "DRCommunication", "DRHistogram")
-  //      partitionHistogram.update(partitionID, recordsRead)
-  //    }
-  //  }
+  def onPartitionMetricsArrival(partitionID: Int, recordsRead: Long): Unit = {
+    this.synchronized {
+      logInfo(s"Recording metrics for partition $partitionID.",
+        "DRCommunication", "DRHistogram")
+      partitionHistogram.update(partitionID, recordsRead)
+    }
+  }
 
   override protected def clearHistograms(): Unit = {
     histograms.clear()
-    //    partitionHistogram.clear()
+    partitionHistogram.clear()
   }
 
-  //  // TODO check distance from uniform, fall back to hashPartitioning if close
-  //
-  //  private def isSignificantChange(partitioningInfo: Option[PartitioningInfo], partitionHistogram: Seq[Double],
-  //    treshold: Double): Boolean = {
-  //    val sCut = partitioningInfo.map(_.sCut).getOrElse(0)
-  //
-  //    val maxInSCut: Double = if (sCut == 0) {
-  //      1.0d / numPartitions
-  //    } else {
-  //      partitionHistogram.take(sCut).max
-  //    }
-  //    val maxOutsideSCut: Double = partitionHistogram.drop(sCut).max
-  //    maxInSCut + treshold < maxOutsideSCut
-  //  }
+  // TODO check distance from uniform, fall back to hashPartitioning if close
+
+  private def isSignificantChange(partitioningInfo: Option[PartitioningInfo], partitionHistogram: Seq[Double],
+    treshold: Double): Boolean = {
+    val sCut = partitioningInfo.map(_.sCut).getOrElse(0)
+
+    val maxInSCut: Double = if (sCut == 0) {
+      1.0d / numPartitions
+    } else {
+      partitionHistogram.take(sCut).max
+    }
+    val maxOutsideSCut: Double = partitionHistogram.drop(sCut).max
+    maxInSCut + treshold < maxOutsideSCut
+  }
 
   override protected def preDecide(): Boolean = {
     logInfo(s"Deciding if need any repartitioning now for stream " +
       s"with ID $streamID.", "DRRepartitioner")
     logInfo(s"Number of received histograms: ${histograms.size}", "DRHistogram")
-    //    val orderedPartitionHistogram = partitionHistogram.toSeq.sortBy(_._1).map(_._2).padTo(numPartitions, 0L)
-    //    val sum = orderedPartitionHistogram.sum
-    //    histograms.nonEmpty && isSignificantChange(latestPartitioningInfo, orderedPartitionHistogram.map(_.toDouble
-    // / sum),
-    //      histogramComparisionTreshold)
-    histograms.size >=
-      SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)
+    if (histograms.size < SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) return false
+
+    val orderedPartitionHistogram = partitionHistogram.toSeq.sortBy(_._1).map(_._2).padTo(numPartitions, 0L)
+    val sum = orderedPartitionHistogram.sum
+    isSignificantChange(latestPartitioningInfo, orderedPartitionHistogram.map(_.toDouble / sum),
+      histogramComparisionTreshold)
   }
 
   override protected def decideAndValidate(globalHistogram: scala.collection.Seq[(Any, Double)]): Boolean = {
     isValidHistogram(globalHistogram)
+  }
+
+  override protected def getPartitioningInfo(globalHistogram: scala.collection.Seq[(Any, Double)]): PartitioningInfo = {
+    val partitioningInfo = super.getPartitioningInfo(globalHistogram)
+    latestPartitioningInfo = Some(partitioningInfo)
+    partitioningInfo
   }
 
   /**
@@ -344,22 +389,10 @@ class StreamingStrategy(
     * RDD. Partitioner should be changed!)
     */
   override protected def resetPartitioners(newPartitioner: Partitioner): Unit = {
-    //    def lookupStreamChildrenReqursively(id: Int, streams: Array[DStream[_]]): Option[DStream[_]] = {
-    //      if (streams.isEmpty) {
-    //        None
-    //      } else {
-    //        streams.find(stream => stream.dependencies.exists(_.id == id)) match {
-    //          case Some(dstream) => Some(dstream)
-    //          case None =>
-    //            lookupStreamChildrenReqursively(id, streams.flatMap(_.dependencies))
-    //        }
-    //      }
-    //    }
 
-    StreamingUtils.lookupStreamChildrenReqursively(streamID,
-      StreamingContext.getActive().get.graph.getOutputStreams()) match {
-      case Some(dstream) =>
-        dstream match {
+    StreamingUtils.getChildren(streamID) match {
+      case head :: tail =>
+        head match {
           case shuffledDStream: ShuffledDStream[_, _, _] =>
             logInfo(s"Resetting partitioner for DStream with ID $streamID to partitioner " +
               s" ${newPartitioner.toString}.")
@@ -368,13 +401,9 @@ class StreamingStrategy(
           case _ =>
             throw new SparkException("Not a ShuffledDStream! Sorry.")
         }
-      case None =>
+      case Nil =>
         throw new SparkException("DStream not found in DStreamGraph!")
     }
-    //    newPartitioner match {
-    //      case kip: KeyIsolationPartitioner => latestPartitioningInfo = Some(kip.partitioningInfo)
-    //      case _ =>
-    //    }
   }
 
   override protected def cleanup(): Unit = {
@@ -448,23 +477,76 @@ class StreamingRepartitioningTrackerFactory extends RepartitioningTrackerFactory
 }
 
 object StreamingUtils {
-  def lookupStreamChildrenReqursively(id: Int, streams: Array[DStream[_]]): Option[DStream[_]] = {
-    if (streams.isEmpty) {
-      None
-    } else {
-      streams.find(stream => stream.dependencies.exists(_.id == id)) match {
-        case Some(dstream) => Some(dstream)
-        case None =>
-          lookupStreamChildrenReqursively(id, streams.flatMap(_.dependencies))
-      }
+  private val streamIDToDStream = mutable.HashMap[Int, DStream[_]]()
+  private val streamIDToStream = mutable.HashMap[Int, Stream]()
+  private val streamIDToChildren = mutable.HashMap[Int, Seq[DStream[_]]]()
+
+  def initialize(outputDStreams: Seq[DStream[_]]): Unit = {
+    outputDStreams.foreach(ds => {
+      streamIDToDStream.update(ds.id, ds)
+      ds.dependencies.foreach(dep => {
+        val children = streamIDToChildren.getOrElseUpdate(dep.id, Seq.empty[DStream[_]])
+        streamIDToChildren.update(dep.id, children :+ ds)
+      })
+      initialize(ds.dependencies)
+    })
+
+  }
+
+  //  def lookupStreamChildrenReqursively(id: Int, streams: Array[DStream[_]]): Option[DStream[_]] = {
+  //    if (streams.isEmpty) {
+  //      None
+  //    } else {
+  //      streams.find(stream => stream.dependencies.exists(_.id == id)) match {
+  //        case Some(dstream) => Some(dstream)
+  //        case None =>
+  //          lookupStreamChildrenReqursively(id, streams.flatMap(_.dependencies))
+  //      }
+  //    }
+  //  }
+
+  def updateStreamIDToStreamMap(streamId: Int, stream: Stream) = {
+    streamIDToStream.update(streamId, stream)
+  }
+
+  def getDStream(streamId: Int): DStream[_] = {
+    streamIDToDStream.get(streamId) match {
+      case Some(ds) => ds
+      case None => throw new RuntimeException(s"Cannot find DStream for id $streamId")
     }
   }
 
-//  // finds only one shuffled parent even if there are more
-//  def findShuffleHead(streams: Array[DStream[_]]): Option[ShuffledDStream[_, _, _]] = {
-//    streams.find(stream => stream.isInstanceOf[ShuffledDStream[_, _, _]]) match {
-//      case Some(dstream) => Some(dstream.asInstanceOf[ShuffledDStream[_, _, _]])
-//      case None => findShuffleHead(streams.flatMap(_.dependencies))
-//    }
-//  }
+  def getChildren(streamId: Int): Seq[DStream[_]] = {
+    streamIDToChildren.get(streamId) match {
+      case Some(children) => children
+      case None => throw new RuntimeException(s"Cannot find children DStreams for id $streamId")
+    }
+  }
+
+  def getParents(dStream: ShuffledDStream[_, _, _]): Seq[Stream] = {
+    dStream.dependencies.map(dep => streamIDToStream(dep.id))
+  }
+
+  // finds only one shuffle head
+  def getShuffleHead(dStream: DStream[_]): Option[ShuffledDStream[_, _, _]] = {
+    def findShuffleHead(dStreams: Seq[DStream[_]]): Option[ShuffledDStream[_, _, _]] = {
+      if (dStreams.nonEmpty) {
+        dStreams.find(stream => stream.isInstanceOf[ShuffledDStream[_, _, _]]) match {
+          case Some(sds) => Some(sds.asInstanceOf[ShuffledDStream[_, _, _]])
+          case None => findShuffleHead(dStreams.flatMap(_.dependencies))
+        }
+      } else {
+        None
+      }
+    }
+    findShuffleHead(Seq(dStream))
+
+    //    dStream match {
+    //      case sds: ShuffledDStream[_, _, _] => Some(sds)
+    //      case ds => ds.dependencies match {
+    //        case head :: tail => getShuffleHead(head)
+    //        case Nil => None
+    //      }
+    //    }
+  }
 }
