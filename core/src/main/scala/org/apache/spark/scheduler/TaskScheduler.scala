@@ -51,8 +51,6 @@ private[spark] trait TaskScheduler {
   // Submit a sequence of tasks to run.
   def submitTasks(taskSet: TaskSet): Unit
 
-  def refineStage(stageId: Int, attemptId: Int, numberOfPartitionins: Int): Unit
-
   // Cancel a stage.
   def cancelTasks(stageId: Int, interruptThread: Boolean): Unit
 

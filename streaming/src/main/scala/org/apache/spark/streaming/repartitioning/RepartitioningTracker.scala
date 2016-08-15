@@ -149,8 +149,8 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
         _jobData.update(jobStart.jobId,
           MasterJobData(jobStart.jobId, stream))
 
-        val scanStrategy = new StreamingStrategy(streamID, stream, 0,
-          SparkEnv.get.conf.getInt(
+        val scanStrategy = new StreamingStrategy(streamID, stream,
+          perBatchSamplingRate = SparkEnv.get.conf.getInt(
             "spark.repartitioning.streaming.per-batch-sampling-rate", 5))
         workers.values.foreach(
           _.reference.send(StreamingScanStrategy(streamID, scanStrategy, parentStreams)))
@@ -192,7 +192,7 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
         logInfo(s"Updating local histogram for task ${taskInfo.taskId} " +
                 s"in stream ${stream.ID} with output stream ID $sID.")
         streamData.strategies.getOrElseUpdate(
-          stream.ID, new StreamingStrategy(stream.ID, stream, getNumberOfPartitions(stream.ID))
+          stream.ID, new StreamingStrategy(stream.ID, stream, totalSlots.intValue())
         ).onHistogramArrival(taskInfo.index, dataCharacteristics)
       case None => logWarning(
         s"Could not update local histogram for streaming," +
@@ -213,8 +213,7 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
         logInfo(s"Updating partition metrics for task ${taskInfo.taskId} " +
           s"in stream ${stream.ID}.")
         val id = stream.ID
-        streamData.strategies.getOrElseUpdate(id, new StreamingStrategy(stream.ID, stream,
-          getNumberOfPartitions(stream.ID)))
+        streamData.strategies.getOrElseUpdate(id, new StreamingStrategy(stream.ID, stream, totalSlots.intValue()))
           .asInstanceOf[StreamingStrategy].onPartitionMetricsArrival(taskInfo.index, recordsRead)
       case None => logWarning(
         s"Could not update local histogram for streaming," +
@@ -297,7 +296,6 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
     worker.register()
     localWorker = Some(worker)
   }
-
 }
 
 
@@ -307,8 +305,8 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
 class StreamingStrategy(
   streamID: Int,
   stream: Stream,
-  var numPartitions: Int,
-  val perBatchSamplingRate: Int = 5) extends Decider(streamID) {
+  var numPartitions: Int = 1,
+  val perBatchSamplingRate: Int = 1) extends Decider(streamID) {
   private val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
   private val histogramComparisionTreshold = 0.01d
   private val partitionHistogram = mutable.HashMap[Int, Long]()
@@ -374,7 +372,13 @@ class StreamingStrategy(
   }
 
   override protected def getPartitioningInfo(globalHistogram: scala.collection.Seq[(Any, Double)]): PartitioningInfo = {
-    val partitioningInfo = super.getPartitioningInfo(globalHistogram)
+    // TODO add number of slots to Decider's constructur
+    val helperInfo = PartitioningInfo.newInstance(globalHistogram, numPartitions, treeDepthHint)
+    val startingLevel = helperInfo.level
+    val multiplier = helperInfo.level / helperInfo.sortedValues.head
+    numPartitions = numPartitions * multiplier.ceil.toInt
+    val partitioningInfo = PartitioningInfo.newInstance(globalHistogram, numPartitions, treeDepthHint)
+    logInfo(s"partitioning info: $partitioningInfo", "DRHistogram")
     latestPartitioningInfo = Some(partitioningInfo)
     partitioningInfo
   }

@@ -148,14 +148,6 @@ private[spark] class TaskSchedulerImpl(
     schedulableBuilder.buildPools()
   }
 
-  override def refineStage(stageId: Int, attemptId: Int, numberOfPartitionins: Int): Unit = {
-    taskSetsByStageIdAndAttempt.get(stageId).foreach {
-      _.get(attemptId).foreach {
-        _.refine(numberOfPartitionins)
-      }
-    }
-  }
-
   def newTaskId(): Long = nextTaskId.getAndIncrement()
 
   override def start() {

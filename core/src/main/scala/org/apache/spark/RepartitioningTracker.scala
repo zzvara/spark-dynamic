@@ -181,8 +181,6 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
 
   protected val totalSlots: AtomicInteger = new AtomicInteger(0)
 
-  protected def dagScheduler: DAGScheduler = SparkContext.getOrCreate().dagScheduler
-
   /**
     * Initializes a local worker and asks it to register with this
     * repartitioning tracker master.
@@ -287,7 +285,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
         logInfo(s"A stage submitted, but dynamic repartitioning is switched off.",
                 "DRCommunication")
       } else {
-        val stageID = stageSubmitted.stageInfo.stageId
+        val stageID = stageInfo.stageId
         logInfo(s"A stage with id $stageID (job ID is $jobID)" +
                 s"submitted with dynamic repartitioning " +
                 s"mode $repartitioningMode.", "DRCommunication")
@@ -295,7 +293,7 @@ private[spark] class RepartitioningTrackerMaster(override val rpcEnv: RpcEnv,
           new ThroughputPrototype(totalSlots.intValue()))
         _stageData.update(stageID,
           new MasterStageData(stageInfo,
-                              new Strategy(stageID, stageInfo.numTasks, partitioner.get),
+            new Strategy(stageID, stageInfo.attemptId, totalSlots.intValue()),
                               repartitioningMode,
                               scanStrategy))
         logInfo(s"Sending repartitioning scan-strategy to each worker for " +
@@ -713,6 +711,7 @@ abstract class Decider(stageID: Int) extends ColorfulLogging with Serializable {
       histograms.values.map(_.recordsPassed).sum
 
     val globalHistogram =
+    // TODO use h.update istead of h.value in batch job
       histograms.values.map(h => h.normalize(h.value, numRecords))
         .reduce(DataCharacteristicsAccumulator.merge[Any, Double](0.0)(
           (a: Double, b: Double) => a + b)
@@ -763,8 +762,8 @@ abstract class Decider(stageID: Int) extends ColorfulLogging with Serializable {
   * A simple strategy to decide when and how to repartition a stage.
   */
 class Strategy(stageID: Int,
-  val numPartitions: Int,
-  partitioner: Partitioner)
+  attemptID: Int,
+  var numPartitions: Int)
   extends Decider(stageID) {
 
   /**
@@ -812,6 +811,16 @@ class Strategy(stageID: Int,
       SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)
   }
 
+  override protected def getPartitioningInfo(globalHistogram: scala.collection.Seq[(Any, Double)]): PartitioningInfo = {
+    val helperInfo = PartitioningInfo.newInstance(globalHistogram, numPartitions, treeDepthHint)
+    val startingLevel = helperInfo.level
+    val multiplier = helperInfo.level / helperInfo.sortedValues.head
+    numPartitions = numPartitions * multiplier.ceil.toInt
+    val partitioningInfo = PartitioningInfo.newInstance(globalHistogram, numPartitions, treeDepthHint)
+    logInfo(s"partitioning info: $partitioningInfo", "DRHistogram")
+    partitioningInfo
+  }
+
   // TODO check distance from uniform
 
   override protected def decideAndValidate(globalHistogram: scala.collection.Seq[(Any, Double)]): Boolean = {
@@ -819,7 +828,8 @@ class Strategy(stageID: Int,
   }
 
   override protected def resetPartitioners(newPartitioner: Partitioner): Unit = {
-    SparkEnv.get.repartitioningTracker
+    SparkContext.getOrCreate().dagScheduler.refineChildrenStages(stageID, newPartitioner.numPartitions)
+    SparkEnv.get.repartitioningTracker.get
       .asInstanceOf[RepartitioningTrackerMaster]
       .broadcastRepartitioningStrategy(stageID, newPartitioner, currentVersion)
     broadcastHistory += newPartitioner

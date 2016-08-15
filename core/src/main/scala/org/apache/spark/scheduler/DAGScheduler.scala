@@ -36,7 +36,7 @@ import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.partial.{ApproximateActionListener, ApproximateEvaluator, PartialResult}
-import org.apache.spark.rdd.RDD
+import org.apache.spark.rdd.{RDD, ShuffledRDD}
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
@@ -234,8 +234,57 @@ class DAGScheduler(
       BlockManagerHeartbeat(blockManagerId), new RpcTimeout(600 seconds, "BlockManagerHeartbeat"))
   }
 
-  def refineStage(stageId: Int, attemptId: Int, numberOfPartitionins: Int): Unit = {
-    taskScheduler.refineStage(stageId, attemptId, numberOfPartitionins)
+
+  def refineChildrenStages(stageId: Int, numPartitions: Int): Unit = {
+    val partitioner = Some(new HashPartitioner(numPartitions))
+
+    def refineStage(stage: Stage, partitioner: Option[Partitioner]): Unit = {
+      //      def findShuffledHead(rdd: RDD[_]): ShuffledRDD[_, _, _] = {
+      //        // refreshing cacheLocs
+      //        rdd match {
+      //          case _rdd: ShuffledRDD[_, _, _] =>
+      //            _rdd
+      //          case _ => rdd.dependencies match {
+      //            // woks only if there is only one parent
+      //            case par :: tail =>
+      //              findShuffledHead(par.rdd)
+      //            case Nil => throw new SparkException(s"Cannot find shuffle head for stage $stageId. Doing nothing.")
+      //          }
+      //        }
+      //      }
+
+      def refreshCacheLocs(rdd: RDD[_]): Unit = {
+        cacheLocs.remove(rdd.id)
+        getCacheLocs(rdd)
+        rdd match {
+          case _rdd: ShuffledRDD[_, _, _] =>
+          case _ => rdd.dependencies match {
+            // woks only if there is only one parent
+            case par :: tail =>
+              refreshCacheLocs(par.rdd)
+            case Nil => throw new SparkException(s"Cannot refine cache locs for stage $stageId. Doing nothing.")
+          }
+        }
+      }
+
+      stage.rdd.setPartitioner(partitioner)
+      refreshCacheLocs(stage.rdd)
+
+      stage match {
+        case rs: ResultStage => partitioner match {
+          case Some(part) => rs.setPartitions((0 until part.numPartitions).toArray)
+          case None =>
+        }
+        case _ =>
+      }
+    }
+
+    logInfo(s"Repartitioning - changing number of partitions adaptively.")
+    val stage = stageIdToStage(stageId)
+    val jobId = stage.firstJobId
+    jobIdToStageIds(jobId).map(stageIdToStage)
+      .filter(_.parents.contains(stage))
+      .foreach(refineStage(_, partitioner))
   }
 
   /**

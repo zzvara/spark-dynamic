@@ -25,7 +25,7 @@ object RepartitioningTestExample {
       .setAppName("RepartitionerTestExample")
 
     val sc = new SparkContext(conf)
-    val lines = sc.textFile(args(0), 3)
+    val lines = sc.textFile(args(0), 4)
       .map(x => {
         Thread.sleep(10)
         (x.toInt, "record")})

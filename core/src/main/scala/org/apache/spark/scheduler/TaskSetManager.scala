@@ -79,6 +79,9 @@ private[spark] class TaskSetManager(
   val ser = env.closureSerializer.newInstance()
 
   val tasks = taskSet.tasks
+  //  if (tasks(0).stageId == 0) {
+  //    sched.dagScheduler.refineStage(1, Some(new HashPartitioner(1)))
+  //  }
   val numTasks = tasks.length
   val copiesRunning = new Array[Int](numTasks)
   val successful = new Array[Boolean](numTasks)
@@ -179,8 +182,6 @@ private[spark] class TaskSetManager(
   override def schedulableQueue: ConcurrentLinkedQueue[Schedulable] = null
 
   override def schedulingMode: SchedulingMode = SchedulingMode.NONE
-
-  def refine(numberOfPartitions: Int) = ???
 
   var emittedTaskSizeWarning = false
 

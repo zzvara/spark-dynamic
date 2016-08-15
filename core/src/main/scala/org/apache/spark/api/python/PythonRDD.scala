@@ -52,9 +52,7 @@ private[spark] class PythonRDD(
 
   override def getPartitions: Array[Partition] = firstParent.partitions
 
-  override val partitioner: Option[Partitioner] = {
-    if (preservePartitoning) firstParent.partitioner else None
-  }
+  partitioner = if (preservePartitoning) firstParent.partitioner else None
 
   val asJavaRDD: JavaRDD[Array[Byte]] = JavaRDD.fromRDD(this)
 
@@ -385,7 +383,7 @@ private class PythonException(msg: String, cause: Exception) extends RuntimeExce
  */
 private class PairwiseRDD(prev: RDD[Array[Byte]]) extends RDD[(Long, Array[Byte])](prev) {
   override def getPartitions: Array[Partition] = prev.partitions
-  override val partitioner: Option[Partitioner] = prev.partitioner
+  partitioner = prev.partitioner
   override def compute(split: Partition, context: TaskContext): Iterator[(Long, Array[Byte])] =
     prev.iterator(split, context).grouped(2).map {
       case Seq(a, b) => (Utils.deserializeLongValue(a), b)

@@ -388,7 +388,7 @@ private[spark] object HadoopRDD extends Logging {
       preservesPartitioning: Boolean = false)
     extends RDD[U](prev) {
 
-    override val partitioner = if (preservesPartitioning) firstParent[T].partitioner else None
+    partitioner = if (preservesPartitioning) firstParent[T].partitioner else None
 
     override def getPartitions: Array[Partition] = firstParent[T].partitions
 

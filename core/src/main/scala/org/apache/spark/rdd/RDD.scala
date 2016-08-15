@@ -136,7 +136,17 @@ abstract class RDD[T: ClassTag](
   protected def getPreferredLocations(split: Partition): Seq[String] = Nil
 
   /** Optionally overridden by subclasses to specify how they are partitioned. */
-  @transient val partitioner: Option[Partitioner] = None
+  var partitioner : Option[Partitioner] = None
+
+  def setPartitioner(partitioner: Option[Partitioner]): Unit = {
+    clearPartitions()
+    this.partitioner = partitioner
+    firstParent.setPartitioner(partitioner)
+  }
+
+  def clearPartitions(): Unit = {
+    partitions_ = null
+  }
 
   // =======================================================================
   // Methods and fields available on all RDDs

@@ -23,6 +23,16 @@ import scala.concurrent.{Future, Promise}
 
 import org.apache.spark.internal.Logging
 
+import scala.reflect.ClassTag
+
+private[spark] final class ResultCollector[T: ClassTag](var results: Array[T]) extends Function2[Int, T, Unit] {
+  def reinitialize(numPartitions: Int): Unit = {
+    results = new Array[T](numPartitions)
+  }
+
+  override def apply(index: Int, result: T): Unit = results(index) = result
+}
+
 /**
  * An object that waits for a DAGScheduler job to complete. As tasks finish, it passes their
  * results to the given handler function.
@@ -30,8 +40,8 @@ import org.apache.spark.internal.Logging
 private[spark] class JobWaiter[T](
     dagScheduler: DAGScheduler,
     val jobId: Int,
-    totalTasks: Int,
-    resultHandler: (Int, T) => Unit)
+  var totalTasks: Int,
+  val resultHandler: (Int, T) => Unit)
   extends JobListener with Logging {
 
   private val finishedTasks = new AtomicInteger(0)
@@ -43,6 +53,14 @@ private[spark] class JobWaiter[T](
   def jobFinished: Boolean = jobPromise.isCompleted
 
   def completionFuture: Future[Unit] = jobPromise.future
+
+  def refinePartitioning(newTotalTasks: Int): Unit = {
+    totalTasks = newTotalTasks
+    resultHandler match {
+      case rc: ResultCollector[T] => rc.reinitialize(newTotalTasks)
+      case _ =>
+    }
+  }
 
   /**
    * Sends a signal to the DAGScheduler to cancel the job. The cancellation itself is handled

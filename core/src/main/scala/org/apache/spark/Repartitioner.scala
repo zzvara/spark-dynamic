@@ -17,6 +17,8 @@
 
 package org.apache.spark
 
+import scala.annotation.tailrec
+
 case class PartitioningInfo(partitions: Int, cut: Int, sCut: Int, level: Double, sortedKeys: Array[Any], sortedValues: Array[Double])
 
 object PartitioningInfo {
@@ -31,6 +33,7 @@ object PartitioningInfo {
     var computedLevel = 1.0d / numPartitions
     var remainder = 1.0d
 
+    @tailrec
     def computeCuts(i: Int): Unit = {
       if (i < startingCut && computedLevel <= sortedValues(i)) {
         remainder -= sortedValues(i)
@@ -43,13 +46,13 @@ object PartitioningInfo {
 
     val actualSCut = Math.max(sCutHint, computedSCut)
     val actualPCut = Math.min(pCutHint, startingCut - actualSCut)
-    // recompute level to minimize rounding errors
+    // we recompute level to minimize rounding errors
     val level = Math.max(0, (1.0d - sortedValues.take(actualSCut).sum) / (numPartitions - actualSCut))
     val actualCut = actualSCut + actualPCut
 
-    println(s"Repartitioning parameters: numPartitions=$numPartitions, cut=$actualCut, " +
-      s"sCut=$actualSCut, pCut=$actualPCut, level=$level, " +
-      s"block=${(numPartitions - actualCut) * level}, maxKey=${sortedValues.headOption}")
+    //    println(s"Repartitioning parameters: numPartitions=$numPartitions, cut=$actualCut, " +
+    //      s"sCut=$actualSCut, pCut=$actualPCut, level=$level, " +
+    //      s"block=${(numPartitions - actualCut) * level}, maxKey=${sortedValues.headOption}")
 
     new PartitioningInfo(numPartitions, actualCut, actualSCut, level, sortedKeys, sortedValues)
   }

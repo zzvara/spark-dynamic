@@ -126,7 +126,7 @@ class CoGroupedRDD[K: ClassTag](
     array
   }
 
-  override val partitioner: Some[Partitioner] = Some(part)
+  partitioner = Some(part)
 
   override def compute(s: Partition, context: TaskContext): Iterator[(K, Array[Iterable[_]])] = {
     val split = s.asInstanceOf[CoGroupPartition]

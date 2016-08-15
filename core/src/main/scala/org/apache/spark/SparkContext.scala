@@ -1881,9 +1881,11 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
       func: (TaskContext, Iterator[T]) => U,
       partitions: Seq[Int],
       properties: Option[HashMap[String, Any]]): Array[U] = {
+    // TODO implement result collector logic for the netry point runJob
     val results = new Array[U](partitions.size)
-    runJob[T, U](rdd, func, partitions, (index, res) => results(index) = res, properties)
-    results
+    val resultCollector = new ResultCollector[U](results)
+    runJob[T, U](rdd, func, partitions, resultCollector, properties)
+    resultCollector.results
   }
 
   /**

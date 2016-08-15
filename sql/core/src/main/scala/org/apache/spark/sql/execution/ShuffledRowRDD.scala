@@ -134,7 +134,7 @@ class ShuffledRowRDD(
 
   override def getDependencies: Seq[Dependency[_]] = List(dependency)
 
-  override val partitioner: Option[Partitioner] = Some(part)
+  partitioner = Some(part)
 
   override def getPartitions: Array[Partition] = {
     assert(partitionStartIndices.length == part.numPartitions)

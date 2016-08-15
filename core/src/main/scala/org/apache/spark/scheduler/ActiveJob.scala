@@ -51,13 +51,13 @@ private[spark] class ActiveJob(
    * Number of partitions we need to compute for this job. Note that result stages may not need
    * to compute all partitions in their target RDD, for actions like first() and lookup().
    */
-  val numPartitions = finalStage match {
+  def numPartitions = finalStage match {
     case r: ResultStage => r.partitions.length
     case m: ShuffleMapStage => m.rdd.partitions.length
   }
 
   /** Which partitions of the stage have finished */
-  val finished = Array.fill[Boolean](numPartitions)(false)
+  lazy val finished = Array.fill[Boolean](numPartitions)(false)
 
   var numFinished = 0
 }
