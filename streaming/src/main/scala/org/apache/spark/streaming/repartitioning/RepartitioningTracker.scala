@@ -342,8 +342,9 @@ class StreamingStrategy(
 
   // TODO check distance from uniform, fall back to hashPartitioning if close
 
-  private def isSignificantChange(partitioningInfo: Option[PartitioningInfo], partitionHistogram: Seq[Double],
-    treshold: Double): Boolean = {
+  private def isSignificantChange(partitioningInfo: Option[PartitioningInfo],
+                                  partitionHistogram: Seq[Double],
+                                  threshold: Double): Boolean = {
     val sCut = partitioningInfo.map(_.sCut).getOrElse(0)
 
     val maxInSCut: Double = if (sCut == 0) {
@@ -352,22 +353,27 @@ class StreamingStrategy(
       partitionHistogram.take(sCut).max
     }
     val maxOutsideSCut: Double = partitionHistogram.drop(sCut).max
-    maxInSCut + treshold < maxOutsideSCut
+    maxInSCut + threshold < maxOutsideSCut
   }
 
   override protected def preDecide(): Boolean = {
     logInfo(s"Deciding if need any repartitioning now for stream " +
       s"with ID $streamID.", "DRRepartitioner")
     logInfo(s"Number of received histograms: ${histograms.size}", "DRHistogram")
-    if (histograms.size < SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) return false
+    if (histograms.size < SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) {
+      logWarning("Histogram threshold is not met.")
+      return false
+    }
 
-    val orderedPartitionHistogram = partitionHistogram.toSeq.sortBy(_._1).map(_._2).padTo(numPartitions, 0L)
+    val orderedPartitionHistogram =
+      partitionHistogram.toSeq.sortBy(_._1).map(_._2).padTo(numPartitions, 0L)
     val sum = orderedPartitionHistogram.sum
     isSignificantChange(latestPartitioningInfo, orderedPartitionHistogram.map(_.toDouble / sum),
       histogramComparisionTreshold)
   }
 
-  override protected def decideAndValidate(globalHistogram: scala.collection.Seq[(Any, Double)]): Boolean = {
+  override protected def decideAndValidate(
+      globalHistogram: scala.collection.Seq[(Any, Double)]): Boolean = {
     isValidHistogram(globalHistogram)
   }
 
@@ -393,7 +399,6 @@ class StreamingStrategy(
     * RDD. Partitioner should be changed!)
     */
   override protected def resetPartitioners(newPartitioner: Partitioner): Unit = {
-
     StreamingUtils.getChildren(streamID) match {
       case head :: tail =>
         head match {

@@ -695,9 +695,11 @@ abstract class Decider(stageID: Int) extends ColorfulLogging with Serializable {
         resetPartitioners(getNewPartitioner(getPartitioningInfo(globalHistogram)))
         true
       } else {
+        logInfo("Decide-and-validate is no-go.")
         false
       }
     } else {
+      logInfo("Pre-decide is no-go.")
       false
     }
     cleanup()

@@ -573,7 +573,12 @@ extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Logging {
   }
 
   override def merge(other: AccumulatorV2[(Any, Double), Map[Any, Double]]): Unit = other match {
-    case o: DataCharacteristicsAccumulator => _map = _map ++ o._map
+    case o: DataCharacteristicsAccumulator =>
+      _width = o._width
+      _recordsPassed = o._recordsPassed
+      _sampleRate = o._sampleRate
+      _version = o._version
+      _map = o._map
     case _ => throw new UnsupportedOperationException(
       s"Cannot merge ${this.getClass.getName} with ${other.getClass.getName}")
   }
