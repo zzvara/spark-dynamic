@@ -9,6 +9,36 @@ import org.apache.spark.SparkConf
 import org.apache.spark.streaming.kafka010.{ConsumerStrategies, KafkaUtils, LocationStrategies}
 import twitter4j.Status
 
+/**
+  * VM OPTIONS
+  * -Dspark.master=local[10]
+-Dspark.executor.instances=6
+-Dspark.executor.cores=4
+-Dspark.executor.memory=6g
+-Dspark.repartitioning=true
+-Dspark.shuffle.sort.bypassMergeThreshold=1
+-Dspark.repartitioning.partitioner-tree-depth=8
+-Dspark.repartitioning.throughput.interval=12000
+-Dspark.repartitioning.histogram-threshold=1
+-Dspark.data-characteristics.backoff-factor=2.0
+-Dspark.data-characteristics.histogram-scale-boundary=20
+-Dspark.data-characteristics.histogram-size-boundary=100
+-Dspark.data-characteristics.histogram-compaction=60
+-Dspark.shuffle.write.data-characteristics=true
+-Dspark.streaming.backpressure.enabled=true
+-Dspark.streaming.kafka.maxRatePerPartition=2000
+-Dlog4j.configuration=file:\\\Users\Ehnalis\Projects\dynamic-repartitioning\conf\log4j.properties
+-Dspark.repartitioning.streaming.per-batch-sampling-rate=1
+-Dspark.streaming.kafka.consumer.poll.ms=2000
+
+  ARGUMENTS
+  group92
+C:\Users\Ehnalis\Projects\dynamic-repartitioning\examples\target\scala-2.11\jars\spark-examples_2.11-2.1.0-SNAPSHOT.jar
+2
+5
+0.001
+  */
+
 object TwitterConsumer {
   def main(args: Array[String]) {
     val batchDuration = args(3).toInt
