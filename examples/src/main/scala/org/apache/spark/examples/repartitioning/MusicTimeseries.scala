@@ -1,10 +1,6 @@
 
 package org.apache.spark.examples.repartitioning
 
-import java.util.Properties
-
-import kafka.javaapi.producer.Producer
-import kafka.producer.{KeyedMessage, ProducerConfig}
 import org.apache.spark.{SparkConf, SparkContext}
 
 object MusicTimeseries {
@@ -21,6 +17,7 @@ object MusicTimeseries {
         .flatMap(pair => pair._1.tags.map(t => (t, pair._2)))
         .mapPartitions { iterator =>
 
+          /*
           val props = new Properties()
           props.put("metadata.broker.list", "localhost:9092")
           props.put("serializer.class", "kafka.serializer.StringEncoder")
@@ -36,6 +33,7 @@ object MusicTimeseries {
             producer.send(data)
           }
 
+*/
           Iterator.empty
         }
       .collect()

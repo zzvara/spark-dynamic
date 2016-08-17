@@ -1,11 +1,9 @@
 
 package org.apache.spark.examples.streaming
 
-import kafka.serializer.StringDecoder
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.SparkConf
-import org.apache.spark.storage.StorageLevel
-import org.apache.spark.streaming.kafka.KafkaUtils
+import org.apache.spark.streaming.kafka010.{ConsumerStrategies, KafkaUtils, LocationStrategies}
 
 object MusicTimeseries {
   def main(args: Array[String]) {
@@ -15,18 +13,18 @@ object MusicTimeseries {
     // Create the context
     val ssc = new StreamingContext(sparkConf, Seconds(1))
 
-    val kafkaParams: Map[String, String] = Map(
+    val kafkaParams: Map[String, Object] = Map(
       "group.id" -> args(0),
       "zookeeper.connect" -> "localhost:2181",
       "auto.offset.reset" -> "smallest"
     )
-    val topics = Map("default" -> 1)
+    val topics = List("default")
 
     val records =
-      KafkaUtils.createStream[String, String, StringDecoder, StringDecoder](
-        ssc, kafkaParams, topics, StorageLevel.MEMORY_ONLY
+      KafkaUtils.createDirectStream[String, String](
+        ssc, LocationStrategies.PreferConsistent, ConsumerStrategies.Subscribe[String, String](topics, kafkaParams)
       )
-      .map(pair => new MusicRecord(pair._2.split("""\|""")))
+      .map(pair => new MusicRecord(pair.value().split("""\|""")))
       .flatMap(record => record.tags.map(t => (t, (t, record))))
 
     records

@@ -1,11 +1,12 @@
 
 package org.apache.spark.examples.streaming.twitter
 
-import kafka.serializer.StringDecoder
+import java.util
+
+import org.apache.kafka.common.TopicPartition
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.SparkConf
-import org.apache.spark.storage.StorageLevel
-import org.apache.spark.streaming.kafka.KafkaUtils
+import org.apache.spark.streaming.kafka010.{ConsumerStrategies, KafkaUtils, LocationStrategies}
 import twitter4j.Status
 
 object TwitterConsumer {
@@ -16,27 +17,31 @@ object TwitterConsumer {
     val sparkConf = new SparkConf()
       .setAppName("Streaming Twitter Consumer")
       .setJars(Seq(args(1)))
-    // Create the context
     val ssc = new StreamingContext(sparkConf, Seconds(batchDuration))
 
-    val kafkaParams: Map[String, String] = Map(
-      "group.id" -> args(0),
-      "zookeeper.connect" -> "localhost:2181",
-      "auto.offset.reset" -> "smallest"
-    )
-    val topics = Map("twitter" -> 1)
-/*
     val records =
-      KafkaUtils.createStream[String, Status, StringDecoder, StatusDecoder](
-        ssc, kafkaParams, topics, StorageLevel.MEMORY_ONLY
+      KafkaUtils.createDirectStream[String, Status](
+        ssc,
+        LocationStrategies.PreferBrokers,
+        ConsumerStrategies.Subscribe[String, Status](
+          Seq("twitter"),
+          Map[String, Object](
+            "group.id" -> args(0),
+            "bootstrap.servers" -> "hadoop00:9092",
+            "key.deserializer" -> "org.apache.kafka.common.serialization.StringDeserializer",
+            "value.deserializer" -> "org.apache.spark.examples.streaming.twitter.TweetDeserializer"
+          ),
+          (0 to 3).map(i => (new TopicPartition("twitter", i), 0L)).toMap
+        )
       )
-      .flatMap(pair => pair._2.getHashtagEntities.map(tag => (tag.getText, (tag.getText, pair._2))))
+      .flatMap(pair => pair.value().getHashtagEntities.map(
+        tag => (tag.getText, (tag.getText, pair.value()))
+      ))
 
     records
       .groupByKey()
       .map {
         x => {
-          Thread.sleep((batchDuration * 1000 * reducerLoad).toLong)
           x
         }
       }
@@ -49,7 +54,7 @@ object TwitterConsumer {
     }
     .count()
     .print()
-*/
+
     ssc.start()
     ssc.awaitTermination()
   }

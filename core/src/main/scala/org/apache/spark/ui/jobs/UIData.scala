@@ -132,9 +132,6 @@ private[spark] object UIData {
 
   object TaskUIData {
     def apply(stageId: Int, taskInfo: TaskInfo, metrics: Option[TaskMetrics]): TaskUIData = {
-      /**
-        * @todo Fix.
-        */
       new TaskUIData(
         stageId,
         dropInternalAndSQLAccumulables(taskInfo),

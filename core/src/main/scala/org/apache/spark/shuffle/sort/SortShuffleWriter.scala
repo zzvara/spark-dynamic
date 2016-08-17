@@ -73,7 +73,7 @@ private[spark] class SortShuffleWriter[K, V : ClassTag, C](
       new ExternalSorter[K, V, V](context, aggregator = None, Some(dep.partitioner),
         ordering = None, dep.serializer)
     }
-    logInfo(s"Running task ${context.taskAttemptId()} with records ${records.toString}", "default")
+    logInfo(s"Running task ${context.taskAttemptId()}.", "default")
     sorter.insertAll(records)
 
     // Don't bother including the time to open the merged output file in the shuffle write time,
