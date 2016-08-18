@@ -103,7 +103,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable with Logging {
   /**
     * @todo What?
     */
-  def remoteBlockFetchInfos(): Seq[BlockFetchInfo] = _remoteBlockFetchInfos.value.asScala.toSeq
+  def remoteBlockFetchInfos(): Seq[BlockFetchInfo] = _remoteBlockFetchInfos.value.asScala
 
   /**
    * Number of local blocks fetched in this shuffle by this task.
@@ -113,7 +113,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable with Logging {
   /**
     * @todo What?
     */
-  def localBlockFetchInfos(): Seq[BlockFetchInfo] = _localBlockFetchInfos.value.asScala.toSeq
+  def localBlockFetchInfos(): Seq[BlockFetchInfo] = _localBlockFetchInfos.value.asScala
 
   /**
    * Total number of remote bytes read from the shuffle by this task.
@@ -161,14 +161,10 @@ class ShuffleReadMetrics private[spark] () extends Serializable with Logging {
   private[spark] def setFetchWaitTime(v: Long): Unit = _fetchWaitTime.setValue(v)
   private[spark] def setRecordsRead(v: Long): Unit = _recordsRead.setValue(v)
   private[spark] def setRemoteBlockFetchInfos(s: java.util.List[BlockFetchInfo]): Unit = {
-    s.asScala.foreach {
-      _remoteBlockFetchInfos.add
-    }
+    _remoteBlockFetchInfos.add(s)
   }
   private[spark] def setLocalBlockFetchInfos(s: java.util.List[BlockFetchInfo]): Unit = {
-    s.asScala.foreach {
-      _localBlockFetchInfos.add
-    }
+    _localBlockFetchInfos.add(s)
   }
 
   private[spark] def setDataCharacteristics(s: Map[Any, Double]): Unit = {
@@ -178,18 +174,21 @@ class ShuffleReadMetrics private[spark] () extends Serializable with Logging {
   /**
    * Resets the value of the current metrics (`this`) and and merges all the independent
    * [[TempShuffleReadMetrics]] into `this`.
-   * @todo Add support for block fetch infos.
    */
   private[spark] def setMergeValues(metrics: Seq[TempShuffleReadMetrics]): Unit = {
     _remoteBlocksFetched.setValue(0)
+    _remoteBlockFetchInfos.setValue(new ArrayList[BlockFetchInfo])
     _localBlocksFetched.setValue(0)
+    _localBlockFetchInfos.setValue(new ArrayList[BlockFetchInfo])
     _remoteBytesRead.setValue(0)
     _localBytesRead.setValue(0)
     _fetchWaitTime.setValue(0)
     _recordsRead.setValue(0)
     metrics.foreach { metric =>
       _remoteBlocksFetched.add(metric.remoteBlocksFetched)
+      _remoteBlockFetchInfos.add(metric.remoteBlockFetchInfos)
       _localBlocksFetched.add(metric.localBlocksFetched)
+      _localBlockFetchInfos.add(metric.localBlockFetchInfos)
       _remoteBytesRead.add(metric.remoteBytesRead)
       _localBytesRead.add(metric.localBytesRead)
       _fetchWaitTime.add(metric.fetchWaitTime)

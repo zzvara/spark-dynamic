@@ -441,6 +441,8 @@ class CollectionAccumulator[T] extends AccumulatorV2[T, java.util.List[T]] {
 
   override def add(v: T): Unit = _list.add(v)
 
+  def add(coll: java.util.List[T]): Unit = _list.addAll(coll)
+
   override def merge(other: AccumulatorV2[T, java.util.List[T]]): Unit = other match {
     case o: CollectionAccumulator[T] => _list.addAll(o.value)
     case _ => throw new UnsupportedOperationException(
@@ -484,7 +486,7 @@ extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Logging {
 
   private val TAKE: Int =
     SparkEnv.get.conf.getInt("spark.data-characteristics.take", 4)
-  private val HISTOGRAM_SCALE_BOUNDARY: Double =
+  private val HISTOGRAM_SCALE_BOUNDARY: Int =
     SparkEnv.get.conf.getInt("spark.data-characteristics.histogram-scale-boundary", 20)
   private val BACKOFF_FACTOR: Double =
     SparkEnv.get.conf.getDouble("spark.data-characteristics.backoff-factor", 2.0)
@@ -508,6 +510,8 @@ extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Logging {
 
   private var _recordsPassed: Long = 0
   def recordsPassed: Long = _recordsPassed
+
+  private var _nextScaleBoundary: Int = HISTOGRAM_SCALE_BOUNDARY
 
   private var _version: Int = 0
   def version: Int = _version
@@ -553,15 +557,18 @@ extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Logging {
         }
       ))
       // Decide if scaling is needed.
-      if (_width * _sampleRate >= HISTOGRAM_SCALE_BOUNDARY) {
+      if (_width >= _nextScaleBoundary) {
         _sampleRate = _sampleRate / BACKOFF_FACTOR
+        _nextScaleBoundary += HISTOGRAM_SCALE_BOUNDARY
         val scaledHistogram =
           updatedHistogram
             .mapValues(x => x / BACKOFF_FACTOR)
             .filter(p => p._2 > DROP_BOUNDARY)
+
         // Decide if additional cut is needed.
         if (_width > HISTOGRAM_SIZE_BOUNDARY) {
           _width = histogramCompaction
+          _nextScaleBoundary = _width + HISTOGRAM_SCALE_BOUNDARY
           _map = mutable.Map[Any, Double]() ++ scaledHistogram.toSeq.sortBy(-_._2).take(histogramCompaction).toMap
         } else {
           _map = mutable.Map[Any, Double]() ++ scaledHistogram

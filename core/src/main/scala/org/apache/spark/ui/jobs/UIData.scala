@@ -228,7 +228,7 @@ private[spark] object UIData {
         remoteBlocksFetched = metrics.remoteBlocksFetched,
         remoteBlockFetchInfos = metrics.remoteBlockFetchInfos(),
         localBlocksFetched = metrics.localBlocksFetched,
-        localBlockFetchInfos = metrics.remoteBlockFetchInfos(),
+        localBlockFetchInfos = metrics.localBlockFetchInfos(),
         remoteBytesRead = metrics.remoteBytesRead,
         localBytesRead = metrics.localBytesRead,
         fetchWaitTime = metrics.fetchWaitTime,
