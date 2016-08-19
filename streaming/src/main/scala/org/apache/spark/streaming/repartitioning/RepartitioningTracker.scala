@@ -310,7 +310,7 @@ class StreamingStrategy(
   private val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
   private val histogramComparisionTreshold = 0.01d
   private val partitionHistogram = mutable.HashMap[Int, Long]()
-  private var latestPartitioningInfo: Option[PartitioningInfo] = None
+  protected var latestPartitioningInfo: Option[PartitioningInfo] = None
 
   def zeroTime: Time = stream.time
 
@@ -327,6 +327,7 @@ class StreamingStrategy(
     }
   }
 
+  // TODO make partitionhistogram Weightable
   def onPartitionMetricsArrival(partitionID: Int, recordsRead: Long): Unit = {
     this.synchronized {
       logInfo(s"Recording metrics for partition $partitionID.",
@@ -368,8 +369,12 @@ class StreamingStrategy(
     val orderedPartitionHistogram =
       partitionHistogram.toSeq.sortBy(_._1).map(_._2).padTo(numPartitions, 0L)
     val sum = orderedPartitionHistogram.sum
-    isSignificantChange(latestPartitioningInfo, orderedPartitionHistogram.map(_.toDouble / sum),
-      histogramComparisionTreshold)
+    if(sum > 0) {
+      isSignificantChange(latestPartitioningInfo, orderedPartitionHistogram.map(_.toDouble / sum),
+        histogramComparisionTreshold)
+    } else {
+      true
+    }
   }
 
   override protected def decideAndValidate(
