@@ -19,6 +19,10 @@ object TwitterConsumer extends Logging {
       .setJars(options('jars).asInstanceOf[Seq[String]])
     val context = new StreamingContext(configuration, Seconds(options('batchDuration).asInstanceOf[Int]))
 
+    val kafkaGroupPostfix = System.currentTimeMillis().toString
+    logInfo(s"Kafka group postfix is going to be [$kafkaGroupPostfix], " +
+            s"just in case you want to continue with the group manually.")
+
     val records =
       KafkaUtils.createDirectStream[String, Status](
         context,
@@ -26,7 +30,8 @@ object TwitterConsumer extends Logging {
         ConsumerStrategies.Subscribe[String, Status](
           Seq("twitter"),
           Map[String, Object](
-            "group.id" -> options('kafkaGroup).toString,
+            "group.id" ->
+              (options('kafkaGroupPrefix).toString + kafkaGroupPostfix),
             "bootstrap.servers" -> options('kafkaServers).toString,
             "key.deserializer" -> "org.apache.kafka.common.serialization.StringDeserializer",
             "value.deserializer" -> "org.apache.spark.examples.streaming.twitter.TweetDeserializer"
@@ -64,8 +69,8 @@ object TwitterConsumer extends Logging {
         case Nil => map
         case "--kafkaServers" :: value :: tail =>
           nextOption(map ++ Map('kafkaServers -> value), tail)
-        case "--kafkaGroup" :: value :: tail =>
-          nextOption(map ++ Map('kafkaGroup -> value), tail)
+        case "--kafkaGroupPrefix" :: value :: tail =>
+          nextOption(map ++ Map('kafkaGroupPrefix -> value), tail)
         case "--jars" :: value :: tail =>
           nextOption(map ++ Map('jars -> value.toString.split(",").toSeq), tail)
         case "--batchDuration" :: value :: tail =>

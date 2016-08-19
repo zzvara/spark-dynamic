@@ -3,6 +3,7 @@ package org.apache.spark.streaming.repartitioning
 
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
+import org.apache.spark.repartitioning._
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.scheduler._
 import org.apache.spark.streaming.{StreamingContext, Time}
@@ -11,7 +12,6 @@ import org.apache.spark.util.DataCharacteristicsAccumulator
 
 import scala.collection.mutable
 import scala.collection.mutable.{Map, Set}
-
 
 /**
   * Scan strategy message sent to workers.
@@ -40,8 +40,8 @@ case class MasterStreamData(
     * A task holds a corresponding DStream ID, which defines a reoccurring
     * stage in a mini-batch.
     */
-  val strategies: Map[Int, Decider] =
-    Map[Int, Decider]()
+  val strategies: mutable.Map[Int, Decider] =
+    mutable.Map[Int, Decider]()
 
   def addJob(jobID: Int): MasterStreamData = {
     relatedJobs += jobID
@@ -192,7 +192,10 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
         logInfo(s"Updating local histogram for task ${taskInfo.taskId} " +
                 s"in stream ${stream.ID} with output stream ID $sID.")
         streamData.strategies.getOrElseUpdate(
-          stream.ID, new StreamingStrategy(stream.ID, stream, totalSlots.intValue())
+          stream.ID,
+          new StreamingStrategy(
+            stream.ID, stream, 1, Some(() => getTotalSlots)
+          )
         ).onHistogramArrival(taskInfo.index, dataCharacteristics)
       case None => logWarning(
         s"Could not update local histogram for streaming," +
@@ -305,12 +308,19 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
 class StreamingStrategy(
   streamID: Int,
   stream: Stream,
-  var numPartitions: Int = 1,
-  val perBatchSamplingRate: Int = 1) extends Decider(streamID) {
-  private val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
-  private val histogramComparisionTreshold = 0.01d
-  private val partitionHistogram = mutable.HashMap[Int, Long]()
-  protected var latestPartitioningInfo: Option[PartitioningInfo] = None
+  val perBatchSamplingRate: Int = 1,
+  resourceStateHandler: Option[() => Int] = None)
+extends Decider(streamID, resourceStateHandler) {
+  protected val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
+  protected val histogramComparisionThreshold =
+    SparkEnv.get.conf.getDouble("spark.repartitioning.histogram.comparision-threshold", 0.01d)
+  protected val partitionHistogram = mutable.HashMap[Int, Long]()
+
+  resourceStateHandler.foreach { handler =>
+    numberOfPartitions = handler.apply()
+    logInfo(s"Updating number of partitions with the resource-state handler to" +
+            s"$numberOfPartitions.")
+  }
 
   def zeroTime: Time = stream.time
 
@@ -331,7 +341,7 @@ class StreamingStrategy(
   def onPartitionMetricsArrival(partitionID: Int, recordsRead: Long): Unit = {
     this.synchronized {
       logInfo(s"Recording metrics for partition $partitionID.",
-        "DRCommunication", "DRHistogram")
+              "DRCommunication", "DRHistogram")
       partitionHistogram.update(partitionID, recordsRead)
     }
   }
@@ -349,7 +359,7 @@ class StreamingStrategy(
     val sCut = partitioningInfo.map(_.sCut).getOrElse(0)
 
     val maxInSCut: Double = if (sCut == 0) {
-      1.0d / numPartitions
+      1.0d / numberOfPartitions
     } else {
       partitionHistogram.take(sCut).max
     }
@@ -359,7 +369,7 @@ class StreamingStrategy(
 
   override protected def preDecide(): Boolean = {
     logInfo(s"Deciding if need any repartitioning now for stream " +
-      s"with ID $streamID.", "DRRepartitioner")
+            s"with ID $streamID.", "DRRepartitioner")
     logInfo(s"Number of received histograms: ${histograms.size}", "DRHistogram")
     if (histograms.size < SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) {
       logWarning("Histogram threshold is not met.")
@@ -367,11 +377,11 @@ class StreamingStrategy(
     }
 
     val orderedPartitionHistogram =
-      partitionHistogram.toSeq.sortBy(_._1).map(_._2).padTo(numPartitions, 0L)
+      partitionHistogram.toSeq.sortBy(_._1).map(_._2).padTo(numberOfPartitions, 0L)
     val sum = orderedPartitionHistogram.sum
     if(sum > 0) {
       isSignificantChange(latestPartitioningInfo, orderedPartitionHistogram.map(_.toDouble / sum),
-        histogramComparisionTreshold)
+        histogramComparisionThreshold)
     } else {
       true
     }
@@ -380,18 +390,6 @@ class StreamingStrategy(
   override protected def decideAndValidate(
       globalHistogram: scala.collection.Seq[(Any, Double)]): Boolean = {
     isValidHistogram(globalHistogram)
-  }
-
-  override protected def getPartitioningInfo(globalHistogram: scala.collection.Seq[(Any, Double)]): PartitioningInfo = {
-    // TODO add number of slots to Decider's constructur
-    val helperInfo = PartitioningInfo.newInstance(globalHistogram, numPartitions, treeDepthHint)
-    val startingLevel = helperInfo.level
-    val multiplier = helperInfo.level / helperInfo.sortedValues.head
-    numPartitions = numPartitions * multiplier.ceil.toInt
-    val partitioningInfo = PartitioningInfo.newInstance(globalHistogram, numPartitions, treeDepthHint)
-    logInfo(s"partitioning info: $partitioningInfo", "DRHistogram")
-    latestPartitioningInfo = Some(partitioningInfo)
-    partitioningInfo
   }
 
   /**

@@ -28,7 +28,7 @@ object PartitionerUpdateTest {
     val keyHistograms = Array.fill[DataCharacteristicsAccumulator](numMiniBatches, numPartitions)(new DataCharacteristicsAccumulator)
     val stream = Stream(0, Time(15), Seconds(5))
 
-    val strategy = new StreamingStrategy(0, stream, numPartitions, 1) {
+    val strategy = new StreamingStrategy(0, stream, 1, Some(() => numPartitions)) {
       var latestPartitioner: Partitioner = new HashPartitioner(numPartitions)
 
       override protected def getNewPartitioner(partitioningInfo: PartitioningInfo): Partitioner = {
