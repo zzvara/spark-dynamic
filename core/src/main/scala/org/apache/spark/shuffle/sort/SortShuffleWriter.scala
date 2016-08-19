@@ -40,6 +40,8 @@ private[spark] class SortShuffleWriter[K, V : ClassTag, C](
 
   private var sorter: ExternalSorter[K, V, _] = null
 
+  logInfo(s"Initializing writer with partitioner ${dep.partitioner.toString}.")
+
   // Are we in the process of stopping? Because map tasks can call stop() with success = true
   // and then call stop() with success = false if they get an exception, we want to make sure
   // we don't try deleting files, etc twice.
@@ -61,7 +63,6 @@ private[spark] class SortShuffleWriter[K, V : ClassTag, C](
 
   /** Write a bunch of records to this task's output */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
-    logInfo("Writer started.")
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
       new ExternalSorter[K, V, C](context, dep.aggregator, Some(dep.partitioner),
