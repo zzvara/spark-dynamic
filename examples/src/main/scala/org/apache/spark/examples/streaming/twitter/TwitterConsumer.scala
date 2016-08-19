@@ -1,63 +1,33 @@
 
 package org.apache.spark.examples.streaming.twitter
 
-import java.util
-
 import org.apache.kafka.common.TopicPartition
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.SparkConf
+import org.apache.spark.internal.Logging
 import org.apache.spark.streaming.kafka010.{ConsumerStrategies, KafkaUtils, LocationStrategies}
 import twitter4j.Status
 
-/**
-  * VM OPTIONS
-  * -Dspark.master=local[10]
--Dspark.executor.instances=6
--Dspark.executor.cores=4
--Dspark.executor.memory=6g
--Dspark.repartitioning=true
--Dspark.shuffle.sort.bypassMergeThreshold=1
--Dspark.repartitioning.partitioner-tree-depth=8
--Dspark.repartitioning.throughput.interval=12000
--Dspark.repartitioning.histogram-threshold=1
--Dspark.data-characteristics.backoff-factor=2.0
--Dspark.data-characteristics.histogram-scale-boundary=20
--Dspark.data-characteristics.histogram-size-boundary=100
--Dspark.data-characteristics.histogram-compaction=60
--Dspark.shuffle.write.data-characteristics=true
--Dspark.streaming.backpressure.enabled=true
--Dspark.streaming.kafka.maxRatePerPartition=2000
--Dlog4j.configuration=file:\\\Users\Ehnalis\Projects\dynamic-repartitioning\conf\log4j.properties
--Dspark.repartitioning.streaming.per-batch-sampling-rate=1
--Dspark.streaming.kafka.consumer.poll.ms=2000
+object TwitterConsumer extends Logging {
+  type Options = Map[Symbol, Any]
 
-  ARGUMENTS
-  group92
-C:\Users\Ehnalis\Projects\dynamic-repartitioning\examples\target\scala-2.11\jars\spark-examples_2.11-2.1.0-SNAPSHOT.jar
-2
-5
-0.001
-  */
+  def main(arguments: Array[String]) {
+    val options = parseOptions(arguments.toList)
 
-object TwitterConsumer {
-  def main(args: Array[String]) {
-    val batchDuration = args(3).toInt
-    val reducerLoad = args(4).toDouble
-
-    val sparkConf = new SparkConf()
+    val configuration = new SparkConf()
       .setAppName("Streaming Twitter Consumer")
-      .setJars(Seq(args(1)))
-    val ssc = new StreamingContext(sparkConf, Seconds(batchDuration))
+      .setJars(options('jars).asInstanceOf[Seq[String]])
+    val context = new StreamingContext(configuration, Seconds(options('batchDuration).asInstanceOf[Int]))
 
     val records =
       KafkaUtils.createDirectStream[String, Status](
-        ssc,
+        context,
         LocationStrategies.PreferBrokers,
         ConsumerStrategies.Subscribe[String, Status](
           Seq("twitter"),
           Map[String, Object](
-            "group.id" -> args(0),
-            "bootstrap.servers" -> "hadoop00:9092",
+            "group.id" -> options('kafkaGroup).toString,
+            "bootstrap.servers" -> options('kafkaServers).toString,
             "key.deserializer" -> "org.apache.kafka.common.serialization.StringDeserializer",
             "value.deserializer" -> "org.apache.spark.examples.streaming.twitter.TweetDeserializer"
           ),
@@ -71,21 +41,41 @@ object TwitterConsumer {
     records
       .groupByKey()
       .map {
-        x => {
-          x
-        }
+        x => x
       }
       /**
         * This ensures that the groping is correct in each mini-batch!
         */
       .map {
       group => group.ensuring(
-        _._2.map(_._1).forall(x => group._1 == x), "False!")
-    }
+        _._2.map(_._1).forall(x => group._1 == x), "Incorrect grouping!")
+      }
     .count()
     .print()
 
-    ssc.start()
-    ssc.awaitTermination()
+    context.start()
+    context.awaitTermination()
+  }
+
+  def parseOptions(arguments: List[String]): Options = {
+    def nextOption(map : Options, list: List[String]) : Options = {
+      def isSwitch(s : String) = s(0) == '-'
+      list match {
+        case Nil => map
+        case "--kafkaServers" :: value :: tail =>
+          nextOption(map ++ Map('kafkaServers -> value), tail)
+        case "--kafkaGroup" :: value :: tail =>
+          nextOption(map ++ Map('kafkaGroup -> value), tail)
+        case "--jars" :: value :: tail =>
+          nextOption(map ++ Map('jars -> value.toString.split(",").toSeq), tail)
+        case "--batchDuration" :: value :: tail =>
+          nextOption(map ++ Map('batchDuration -> value.toInt), tail)
+        case option :: tail =>
+          logError(s"Unknown option '$option'!")
+          throw new IllegalArgumentException("Unknown option!")
+      }
+    }
+
+    nextOption(Map[Symbol, Any](), arguments)
   }
 }
