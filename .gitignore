@@ -31,7 +31,6 @@ cache
 checkpoint
 conf/*.cmd
 conf/*.conf
-conf/*.properties
 conf/*.sh
 conf/*.xml
 conf/java-opts
