@@ -52,11 +52,13 @@
       <groupId>org.twitter4j</groupId>
       <artifactId>twitter4j-stream</artifactId>
       <version>4.0.4</version>
+      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.twitter4j</groupId>
       <artifactId>twitter4j-core</artifactId>
       <version>4.0.4</version>
+      <scope>provided</scope>
     </dependency>
 
     <dependency>
@@ -131,16 +133,6 @@
       <groupId>com.twitter</groupId>
       <artifactId>parquet-hadoop-bundle</artifactId>
       <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.twitter4j</groupId>
-      <artifactId>twitter4j-core</artifactId>
-      <version>4.0.4</version>
-    </dependency>
-    <dependency>
-      <groupId>org.twitter4j</groupId>
-      <artifactId>twitter4j-stream</artifactId>
-      <version>4.0.4</version>
     </dependency>
   </dependencies>
 

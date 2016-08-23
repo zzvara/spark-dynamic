@@ -18,6 +18,7 @@
 // scalastyle:off println
 package org.apache.spark.examples
 
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.SparkSession
 
 /**
@@ -55,13 +56,10 @@ object SparkPageRank {
 
     showWarning()
 
-    val spark = SparkSession
-      .builder
-      .appName("SparkPageRank")
-      .getOrCreate()
+    val spark = new SparkContext(new SparkConf())
 
     val iters = if (args.length > 1) args(1).toInt else 10
-    val lines = spark.read.textFile(args(0)).rdd
+    val lines = spark.textFile(args(0))
     val links = lines.map{ s =>
       val parts = s.split("\\s+")
       (parts(0), parts(1))
@@ -78,6 +76,8 @@ object SparkPageRank {
 
     val output = ranks.collect()
     output.foreach(tup => println(tup._1 + " has rank: " + tup._2 + "."))
+
+    Thread.sleep(60 * 60 * 24 * 1000)
 
     spark.stop()
   }
