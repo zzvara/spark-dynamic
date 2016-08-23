@@ -120,19 +120,20 @@ extends ColorfulLogging with Serializable {
     * strategy to workers.
     */
   def repartition(): Boolean = {
-    val doneRepartitioning = if (preDecide()) {
-      val globalHistogram = getGlobalHistogram
-      if (decideAndValidate(globalHistogram)) {
-        resetPartitioners(getNewPartitioner(getPartitioningInfo(globalHistogram)))
-        true
+    val doneRepartitioning =
+      if (preDecide()) {
+        val globalHistogram = getGlobalHistogram
+        if (decideAndValidate(globalHistogram)) {
+          resetPartitioners(getNewPartitioner(getPartitioningInfo(globalHistogram)))
+          true
+        } else {
+          logInfo("Decide-and-validate is no-go.")
+          false
+        }
       } else {
-        logInfo("Decide-and-validate is no-go.")
+        logInfo("Pre-decide is no-go.")
         false
       }
-    } else {
-      logInfo("Pre-decide is no-go.")
-      false
-    }
     cleanup()
     doneRepartitioning
   }

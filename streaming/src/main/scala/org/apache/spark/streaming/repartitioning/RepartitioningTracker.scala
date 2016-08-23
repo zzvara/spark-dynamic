@@ -290,8 +290,10 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
           val recordsRead = shuffleReadMetrics.recordsRead
           if (recordsRead > 0) {
             StreamingUtils.getShuffleHead(StreamingUtils.getDStream(stream.ID)) match {
-              case Some(shuffleHead) => StreamingUtils.getParents(shuffleHead).foreach(s => updatePartitionMetrics(s,
-                taskEnd.taskInfo, recordsRead))
+              case Some(shuffleHead) =>
+                StreamingUtils.getParents(shuffleHead).foreach(
+                  s => updatePartitionMetrics(s, taskEnd.taskInfo, recordsRead)
+                )
               case None => throw new RuntimeException(s"Cannot find shuffle head for stream $stream")
             }
           }
@@ -379,6 +381,13 @@ extends Decider(streamID, resourceStateHandler) {
     maxInSCut + threshold < maxOutsideSCut
   }
 
+  /**
+    * Decides whether repartitioning is needed based on:
+    * - the partition histogram of the current stage,
+    * - the Partitioner of the previous stage.
+    *
+    * Note that no global histogram is used in this point.
+    */
   override protected def preDecide(): Boolean = {
     logInfo(s"Deciding if need any repartitioning now for stream " +
             s"with ID $streamID.", "DRRepartitioner")
