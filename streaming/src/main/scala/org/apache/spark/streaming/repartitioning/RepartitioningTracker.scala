@@ -4,7 +4,7 @@ package org.apache.spark.streaming.repartitioning
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.repartitioning._
-import org.apache.spark.rpc.RpcEnv
+import org.apache.spark.rpc.{RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler._
 import org.apache.spark.streaming.{StreamingContext, Time}
 import org.apache.spark.streaming.dstream.{DStream, ShuffledDStream, Stream}
@@ -32,7 +32,8 @@ case class MasterStreamData(
     streamID: Int,
     relatedJobs: Set[Int] = Set[Int](),
     parentDStreams: scala.collection.immutable.Set[Int]
-      = scala.collection.immutable.Set[Int]())
+      = scala.collection.immutable.Set[Int](),
+    scanStrategy: StreamingStrategy)
 {
   /**
     * Deciders, which are StreamingStrategies by default for each
@@ -144,14 +145,15 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
             StreamingContext.getActive().get.graph.getOutputStreams().toSet
           ).map(_.id)
 
-        _streamData.update(streamID,
-          MasterStreamData(streamID, Set[Int](jobStart.jobId), parentStreams))
-        _jobData.update(jobStart.jobId,
-          MasterJobData(jobStart.jobId, stream))
-
         val scanStrategy = new StreamingStrategy(streamID, stream,
           perBatchSamplingRate = SparkEnv.get.conf.getInt(
             "spark.repartitioning.streaming.per-batch-sampling-rate", 5))
+
+        _streamData.update(streamID,
+          MasterStreamData(streamID, mutable.Set[Int](jobStart.jobId), parentStreams, scanStrategy))
+        _jobData.update(jobStart.jobId,
+          MasterJobData(jobStart.jobId, stream))
+
         workers.values.foreach(
           _.reference.send(StreamingScanStrategy(streamID, scanStrategy, parentStreams)))
       } else {
@@ -164,6 +166,16 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
       logInfo(s"Regular job start detected, with ID ${jobStart.jobId}. " +
               s"Doing nothing special.")
     }
+  }
+
+  override protected def replyWithStrategies(workerReference: RpcEndpointRef): Unit = {
+    workerReference.send(ScanStrategies(
+      _stageData.map(_._2.scanStrategy).toList ++
+      _streamData.map {
+        streamData => StreamingScanStrategy(
+          streamData._2.streamID, streamData._2.scanStrategy, streamData._2.parentDStreams)
+      }
+    ))
   }
 
   override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {
@@ -220,8 +232,8 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
           .asInstanceOf[StreamingStrategy].onPartitionMetricsArrival(taskInfo.index, recordsRead)
       case None => logWarning(
         s"Could not update local histogram for streaming," +
-          s" since streaming data does not exist for DStream" +
-          s" ID ${stream.ID}!")
+        s" since streaming data does not exist for DStream" +
+        s" ID ${stream.ID}!")
     }
   }
 
@@ -332,7 +344,7 @@ extends Decider(streamID, resourceStateHandler) {
     keyHistogram: DataCharacteristicsAccumulator): Unit = {
     this.synchronized {
       logInfo(s"Recording histogram arrival for partition $partitionID.",
-        "DRCommunication", "DRHistogram")
+              "DRCommunication", "DRHistogram")
       histograms.update(partitionID, keyHistogram)
     }
   }
@@ -449,6 +461,7 @@ extends RepartitioningTrackerWorker(rpcEnv, conf, executorId) {
         case StandaloneStrategy(stageID, scanner) =>
           stageData.update(stageID, RepartitioningStageData(scanner))
         case StreamingScanStrategy(streamID, strategy, parentStreams) =>
+          logInfo(s"Received streaming strategy for stream ID $streamID.", "DRCommunication")
           streamData.update(streamID, RepartitioningStreamData(streamID, strategy, parentStreams))
       }
     case StreamingScanStrategy(streamID, strategy, parentStreams) =>
@@ -470,9 +483,11 @@ extends RepartitioningTrackerWorker(rpcEnv, conf, executorId) {
           }
           isDataAwareForTime
         case None =>
+          logWarning(s"RDD with property 'stream' has no stream data associated!")
           false
       }
     } else {
+      logInfo("RDD not with property 'stream', falling back to base tracker for decision.")
       super.isDataAware(rdd)
     }
   }

@@ -107,6 +107,12 @@ extends RepartitioningTracker(conf) with ColorfulLogging {
     */
   def getLocalWorker: Option[RepartitioningTrackerWorker] = localWorker
 
+  protected def replyWithStrategies(workerReference: RpcEndpointRef): Unit = {
+    workerReference.send(ScanStrategies(
+      _stageData.map(_._2.scanStrategy).toList
+    ))
+  }
+
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     this.synchronized {
       case Register(executorID, workerReference) =>
@@ -118,9 +124,7 @@ extends RepartitioningTracker(conf) with ColorfulLogging {
           logInfo(s"Registering worker from executor {$executorID}.", "DRCommunication")
           workers.put(executorID, new Worker(executorID, workerReference))
           context.reply(true)
-          workerReference.send(new ScanStrategies(
-            _stageData.map(_._2.scanStrategy).toList
-          ))
+          replyWithStrategies(workerReference)
         }
 
       /**
