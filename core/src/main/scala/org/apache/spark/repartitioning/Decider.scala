@@ -101,8 +101,8 @@ extends ColorfulLogging with Serializable {
       globalHistogram: scala.collection.Seq[(Any, Double)]): PartitioningInfo = {
     val initialInfo =
       PartitioningInfo.newInstance(globalHistogram, totalSlots, treeDepthHint)
-    val multiplier = initialInfo.level / initialInfo.sortedValues.head
-    numberOfPartitions = math.min(totalSlots * multiplier.ceil.toInt, 2)
+    val multiplier = math.min(initialInfo.level / initialInfo.sortedValues.head, 2)
+    numberOfPartitions = totalSlots * multiplier.ceil.toInt
     val partitioningInfo =
       PartitioningInfo.newInstance(globalHistogram, numberOfPartitions, treeDepthHint)
     logInfo(s"Constructed partitioning info is [$partitioningInfo].", "DRHistogram")

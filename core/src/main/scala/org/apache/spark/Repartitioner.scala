@@ -19,7 +19,17 @@ package org.apache.spark
 
 import scala.annotation.tailrec
 
-case class PartitioningInfo(partitions: Int, cut: Int, sCut: Int, level: Double, sortedKeys: Array[Any], sortedValues: Array[Double])
+case class PartitioningInfo(partitions: Int,
+                            cut: Int,
+                            sCut: Int,
+                            level: Double,
+                            sortedKeys: Array[Any],
+                            sortedValues: Array[Double]) {
+  override def toString: String = {
+    s"PartitioningInfo [ numberOfPartitions=$partitions, cut=$cut, sCut=$sCut, " +
+    s"level=$level ]"
+  }
+}
 
 object PartitioningInfo {
 
