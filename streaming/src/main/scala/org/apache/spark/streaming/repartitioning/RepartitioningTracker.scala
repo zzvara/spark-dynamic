@@ -351,7 +351,9 @@ extends Decider(streamID, resourceStateHandler) {
     }
   }
 
-  // TODO make partitionhistogram Weightable
+  /**
+    * @todo Make partition histogram weightable.
+    */
   def onPartitionMetricsArrival(partitionID: Int, recordsRead: Long): Unit = {
     this.synchronized {
       logInfo(s"Recording metrics for partition $partitionID.",
@@ -365,11 +367,24 @@ extends Decider(streamID, resourceStateHandler) {
     partitionHistogram.clear()
   }
 
-  // TODO check distance from uniform, fall back to hashPartitioning if close
-
+  /**
+    * @todo Check distance from uniform, fall back to HashPartitioning if close.
+    */
   private def isSignificantChange(partitioningInfo: Option[PartitioningInfo],
                                   partitionHistogram: Seq[Double],
                                   threshold: Double): Boolean = {
+    val maxPartition = partitionHistogram.max
+    val minPartition = partitionHistogram.min
+    logInfo(s"Difference between maximum and minimum of partition histogram is " +
+            s"$maxPartition - $minPartition = ${maxPartition-minPartition}")
+    logInfo(s"Relative size of the maximal partition to the ideal average is " +
+            s"${(maxPartition / partitionHistogram.sum) / (1.0d / numberOfPartitions)}")
+
+    if (SparkEnv.get.conf.getBoolean("spark.repartitioning.significant-change.backdoor",
+                                     defaultValue = false)) {
+      return false
+    }
+
     val sCut = partitioningInfo.map(_.sCut).getOrElse(0)
 
     val maxInSCut: Double = if (sCut == 0) {

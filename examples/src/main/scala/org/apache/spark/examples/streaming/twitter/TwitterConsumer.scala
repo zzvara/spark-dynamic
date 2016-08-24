@@ -32,11 +32,11 @@ object TwitterConsumer extends Logging {
           Map[String, Object](
             "group.id" ->
               (options('kafkaGroupPrefix).toString + kafkaGroupPostfix),
+            "auto.offset.reset" -> "earliest",
             "bootstrap.servers" -> options('kafkaServers).toString,
             "key.deserializer" -> "org.apache.kafka.common.serialization.StringDeserializer",
             "value.deserializer" -> "org.apache.spark.examples.streaming.twitter.TweetDeserializer"
-          ),
-          (0 to 3).map(i => (new TopicPartition("twitter", i), 0L)).toMap
+          )
         )
       )
       .flatMap(pair => pair.value().getHashtagEntities.map(
