@@ -465,6 +465,14 @@ private[spark] object DataCharacteristicsAccumulator {
     s1 ++ s2.map{ case (k, v) => k -> f(v, s1.getOrElse(k, zero)) }
   }
 
+  def weightedMerge[A](zero: Double, weightOfFirst: Double)
+                         (s1: Map[A, Double], s2: Seq[(A, Double)]): Seq[(A, Double)] = {
+    (
+      s1.map(pair => (pair._1, pair._2 * weightOfFirst)) ++
+      s2.map{ case (k, v) => k -> (v * (1 - weightOfFirst) + s1.getOrElse(k, zero)) }
+    ).toSeq
+  }
+
   def isWeightable[T]()(implicit mf: ClassTag[T]): Boolean =
     classOf[Weightable] isAssignableFrom mf.runtimeClass
 

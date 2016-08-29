@@ -605,8 +605,6 @@ class Strategy(stageID: Int,
     logInfo(s"Version of histograms pushed up for stage $stageID", "DRHistogram")
     clearHistograms()
   }
-
-  override protected def cleanup(): Unit = {}
 }
 
 class Worker(val executorID: String,

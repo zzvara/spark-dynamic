@@ -40,27 +40,38 @@ abstract class Decider(
 extends ColorfulLogging with Serializable {
   protected val histograms = mutable.HashMap[Int, DataCharacteristicsAccumulator]()
   protected var currentVersion: Int = 0
+
   /**
     * Number of repartitions happened.
     */
   protected var repartitionCount: Int = 0
+
   /**
     * Partitioner history.
     */
   protected val broadcastHistory = ArrayBuffer[Partitioner]()
+
   /**
     * Number of desired partitions to have.
     */
   protected var numberOfPartitions: Int = 1
+
   /**
     * Latest partitioning information, mostly to decide whether a new one is necessary.
     */
   protected var latestPartitioningInfo: Option[PartitioningInfo] = None
+
   /**
     * Depth of the probability-cut in the new {{KeyIsolatorPartitioner}}.
     */
   protected val treeDepthHint =
     SparkEnv.get.conf.getInt("spark.repartitioning.partitioner-tree-depth", 3)
+
+  /**
+    * Current, active global histogram that has been computed from the
+    * histograms, stored in this variable.
+    */
+  protected var currentGlobalHistogram: Option[scala.collection.Seq[(Any, Double)]] = None
 
   /**
     * Fetches the number of total slots available from an external resource-state handler.
@@ -103,6 +114,9 @@ extends ColorfulLogging with Serializable {
       PartitioningInfo.newInstance(globalHistogram, totalSlots, treeDepthHint)
     val multiplier = math.min(initialInfo.level / initialInfo.sortedValues.head, 2)
     numberOfPartitions = totalSlots * multiplier.ceil.toInt
+    if (SparkEnv.get.conf.getBoolean("spark.repartitioning.streaming.force-slot-size", false)) {
+      numberOfPartitions = totalSlots
+    }
     val partitioningInfo =
       PartitioningInfo.newInstance(globalHistogram, numberOfPartitions, treeDepthHint)
     logInfo(s"Constructed partitioning info is [$partitioningInfo].", "DRHistogram")
@@ -120,6 +134,7 @@ extends ColorfulLogging with Serializable {
     * strategy to workers.
     */
   def repartition(): Boolean = {
+    beforeRepartition()
     val doneRepartitioning =
       if (preDecide()) {
         val globalHistogram = getGlobalHistogram
@@ -138,12 +153,20 @@ extends ColorfulLogging with Serializable {
     doneRepartitioning
   }
 
+  protected def getGlobalHistogram = {
+    currentGlobalHistogram.getOrElse(computeGlobalHistogram)
+  }
+
+  protected def beforeRepartition(): Unit = {
+
+  }
+
   protected def preDecide(): Boolean
 
   /**
     * @todo Use `h.update` instead of `h.value` in batch job.
     */
-  protected def getGlobalHistogram: scala.collection.Seq[(Any, Double)] = {
+  protected def computeGlobalHistogram: scala.collection.Seq[(Any, Double)] = {
     val numRecords =
       histograms.values.map(_.recordsPassed).sum
 
@@ -152,12 +175,13 @@ extends ColorfulLogging with Serializable {
         .reduce(DataCharacteristicsAccumulator.merge[Any, Double](0.0)(
           (a: Double, b: Double) => a + b)
         )
-        .toSeq.sortBy(-_._2)
+        .toSeq.sortBy(-_._2).take(50)
     logInfo(
       globalHistogram.foldLeft(
         s"Global histogram for repartitioning " +
         s"step $repartitionCount:\n")((x, y) =>
         x + s"\t${y._1}\t->\t${y._2}\n"), "DRHistogram")
+    currentGlobalHistogram = Some(globalHistogram)
     globalHistogram
   }
 
@@ -186,5 +210,7 @@ extends ColorfulLogging with Serializable {
 
   protected def resetPartitioners(newPartitioner: Partitioner): Unit
 
-  protected def cleanup(): Unit
+  protected def cleanup(): Unit = {
+    currentGlobalHistogram = None
+  }
 }

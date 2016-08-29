@@ -32,11 +32,13 @@ object TwitterConsumer extends Logging {
           Map[String, Object](
             "group.id" ->
               (options('kafkaGroupPrefix).toString + kafkaGroupPostfix),
-            "auto.offset.reset" -> "earliest",
             "bootstrap.servers" -> options('kafkaServers).toString,
             "key.deserializer" -> "org.apache.kafka.common.serialization.StringDeserializer",
             "value.deserializer" -> "org.apache.spark.examples.streaming.twitter.TweetDeserializer"
-          )
+          ),
+          (0 to 3).map(
+            i => (new TopicPartition("twitter", i), options('uniformKafkaOffset).toString.toLong)
+          ).toMap
         )
       )
       .flatMap(pair => pair.value().getHashtagEntities.map(
@@ -44,7 +46,7 @@ object TwitterConsumer extends Logging {
       ))
 
     records
-      .groupByKey()
+      .groupByKey(options('defaultGroupByPartitions).toString.toInt)
       .map {
         x => x
       }
@@ -71,10 +73,14 @@ object TwitterConsumer extends Logging {
           nextOption(map ++ Map('kafkaServers -> value), tail)
         case "--kafkaGroupPrefix" :: value :: tail =>
           nextOption(map ++ Map('kafkaGroupPrefix -> value), tail)
+        case "--defaultGroupByPartitions" :: value :: tail =>
+          nextOption(map ++ Map('defaultGroupByPartitions -> value.toInt), tail)
         case "--jars" :: value :: tail =>
           nextOption(map ++ Map('jars -> value.toString.split(",").toSeq), tail)
         case "--batchDuration" :: value :: tail =>
           nextOption(map ++ Map('batchDuration -> value.toInt), tail)
+        case "--uniformKafkaOffset" :: value :: tail =>
+          nextOption(map ++ Map('uniformKafkaOffset -> value.toInt), tail)
         case option :: tail =>
           logError(s"Unknown option '$option'!")
           throw new IllegalArgumentException("Unknown option!")

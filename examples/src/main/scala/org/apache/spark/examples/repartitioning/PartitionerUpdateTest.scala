@@ -42,7 +42,7 @@ object PartitionerUpdateTest {
 
       override def repartition(): Boolean = {
         val doneRepartitioning = if (preDecide()) {
-          val globalHistogram = getGlobalHistogram
+          val globalHistogram = computeGlobalHistogram
           if (decideAndValidate(globalHistogram)) {
             // we commented out resetPartitioners intentionally, because it is not part of the logic to be tested, but
             // it would require a running cluster and a full fledged streaming topology in the background

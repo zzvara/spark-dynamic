@@ -326,9 +326,13 @@ class StreamingStrategy(
   resourceStateHandler: Option[() => Int] = None)
 extends Decider(streamID, resourceStateHandler) {
   protected val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
+  protected val partitionHistogram = mutable.HashMap[Int, Long]()
+  protected var retentiveHistogram: Option[scala.collection.Seq[(Any, Double)]] = None
+
   protected val histogramComparisionThreshold =
     SparkEnv.get.conf.getDouble("spark.repartitioning.histogram.comparision-threshold", 0.01d)
-  protected val partitionHistogram = mutable.HashMap[Int, Long]()
+  protected val retentiveHistogramWeight =
+    SparkEnv.get.conf.getDouble("spark.repartitioning.streaming.retentive.weight", 0.8d)
 
   resourceStateHandler.foreach { handler =>
     numberOfPartitions = handler.apply()
@@ -368,6 +372,29 @@ extends Decider(streamID, resourceStateHandler) {
   }
 
   /**
+    * @todo Make take configurable.
+    */
+  override protected def getGlobalHistogram = {
+    val globalHistogram = currentGlobalHistogram.getOrElse(computeGlobalHistogram)
+    retentiveHistogram match {
+      case Some(histogram) =>
+        logInfo(s"Getting histogram by calculating the retentive histogram with" +
+                s" a retentive weight of $retentiveHistogramWeight.")
+        retentiveHistogram = Some(DataCharacteristicsAccumulator.weightedMerge(
+          0.0d, retentiveHistogramWeight)(
+          histogram.toMap, globalHistogram
+        ).sortBy(-_._2).take(50))
+      case None =>
+        retentiveHistogram = Some(globalHistogram)
+    }
+    logInfo(
+      retentiveHistogram.get.foldLeft(
+        s"Retentive histogram is:\n")((x, y) =>
+        x + s"\t${y._1}\t->\t${y._2}\n"), "DRHistogram")
+    retentiveHistogram.get
+  }
+
+  /**
     * @todo Check distance from uniform, fall back to HashPartitioning if close.
     */
   private def isSignificantChange(partitioningInfo: Option[PartitioningInfo],
@@ -385,6 +412,11 @@ extends Decider(streamID, resourceStateHandler) {
       return false
     }
 
+    if (SparkEnv.get.conf.getBoolean("spark.repartitioning.significant-change.always-yes",
+      defaultValue = false)) {
+      return true
+    }
+
     val sCut = partitioningInfo.map(_.sCut).getOrElse(0)
 
     val maxInSCut: Double = if (sCut == 0) {
@@ -393,7 +425,13 @@ extends Decider(streamID, resourceStateHandler) {
       partitionHistogram.take(sCut).max
     }
     val maxOutsideSCut: Double = partitionHistogram.drop(sCut).max
-    maxInSCut + threshold < maxOutsideSCut
+    val isSignificantChange = maxInSCut + threshold < maxOutsideSCut
+    if (isSignificantChange) {
+      logInfo("Significant change detected.")
+    } else {
+      logInfo("Significant changed not detected.")
+    }
+    isSignificantChange
   }
 
   /**
@@ -455,6 +493,7 @@ extends Decider(streamID, resourceStateHandler) {
   }
 
   override protected def cleanup(): Unit = {
+    super.cleanup()
     clearHistograms()
   }
 }
