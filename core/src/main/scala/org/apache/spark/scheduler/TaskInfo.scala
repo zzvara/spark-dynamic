@@ -43,7 +43,7 @@ class TaskInfo(
     val host: String,
     val taskLocality: TaskLocality.TaskLocality,
     val speculative: Boolean,
-    val stageProperties: Option[mutable.Map[String, Any]] = None) {
+    val stageProperties: Option[mutable.Map[String, Any]] = None) extends Serializable {
 
   /**
    * The time when the task started remotely getting the result. Will not be set if the

@@ -226,10 +226,12 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
     } match {
       case Some((sID, streamData)) =>
         logInfo(s"Updating partition metrics for task ${taskInfo.taskId} " +
-          s"in stream ${stream.ID}.")
+                s"in stream ${stream.ID}.")
         val id = stream.ID
-        streamData.strategies.getOrElseUpdate(id, new StreamingStrategy(stream.ID, stream, totalSlots.intValue()))
-          .asInstanceOf[StreamingStrategy].onPartitionMetricsArrival(taskInfo.index, recordsRead)
+        streamData.strategies.getOrElseUpdate(
+          id,
+          new StreamingStrategy(stream.ID, stream, totalSlots.intValue())
+        ).asInstanceOf[StreamingStrategy].onPartitionMetricsArrival(taskInfo.index, recordsRead)
       case None => logWarning(
         s"Could not update local histogram for streaming," +
         s" since streaming data does not exist for DStream" +
@@ -281,6 +283,7 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
             val size = shuffleWriteMetrics.dataCharacteristics.value.size
             val recordsPassed = shuffleWriteMetrics.dataCharacteristics.recordsPassed
             logInfo(s"DataCharacteristics size is $size with $recordsPassed records passed.")
+            logObject("taskEnd", streamID, taskEnd.taskInfo)
             updateLocalHistogramForStreaming(
               stream,
               taskEnd.taskInfo,
@@ -391,6 +394,7 @@ extends Decider(streamID, resourceStateHandler) {
       retentiveHistogram.get.foldLeft(
         s"Retentive histogram is:\n")((x, y) =>
         x + s"\t${y._1}\t->\t${y._2}\n"), "DRHistogram")
+    logObject(("retentiveHistogram", streamID, retentiveHistogram.get))
     retentiveHistogram.get
   }
 
@@ -406,6 +410,7 @@ extends Decider(streamID, resourceStateHandler) {
             s"$maxPartition - $minPartition = ${maxPartition-minPartition}")
     logInfo(s"Relative size of the maximal partition to the ideal average is " +
             s"${(maxPartition / partitionHistogram.sum) / (1.0d / numberOfPartitions)}")
+    logObject(("partitionHistogram", streamID, partitionHistogram))
 
     if (SparkEnv.get.conf.getBoolean("spark.repartitioning.significant-change.backdoor",
                                      defaultValue = false)) {
@@ -482,6 +487,7 @@ extends Decider(streamID, resourceStateHandler) {
           case shuffledDStream: ShuffledDStream[_, _, _] =>
             logInfo(s"Resetting partitioner for DStream with ID $streamID to partitioner " +
               s" ${newPartitioner.toString}.")
+            logObject(("partitionerReset", streamID, newPartitioner))
             shuffledDStream.partitioner = newPartitioner
             partitionerHistory :+ newPartitioner
           case _ =>

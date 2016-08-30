@@ -126,7 +126,7 @@ private[spark] object StageInfo {
     val ancestorRddInfos = stage.rdd.getNarrowAncestors.map(RDDInfo.fromRdd)
     val rddInfos = Seq(RDDInfo.fromRdd(stage.rdd)) ++ ancestorRddInfos
     val shuffleId = stage match {
-      case shuffleMapStage: ShuffleMapStage => Some(shuffleMapStage.shuffleDep.shuffleId)
+      case shuffleMapStage: ShuffleMapStage => Some(shuffleMapStage.shuffleDep.shuffleHandle.shuffleId)
       case _ => None
     }
     stage match {

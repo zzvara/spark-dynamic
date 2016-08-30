@@ -120,6 +120,7 @@ extends ColorfulLogging with Serializable {
     val partitioningInfo =
       PartitioningInfo.newInstance(globalHistogram, numberOfPartitions, treeDepthHint)
     logInfo(s"Constructed partitioning info is [$partitioningInfo].", "DRHistogram")
+    logObject(("partitioningInfo", stageID, partitioningInfo))
     latestPartitioningInfo = Some(partitioningInfo)
     partitioningInfo
   }
@@ -176,6 +177,7 @@ extends ColorfulLogging with Serializable {
           (a: Double, b: Double) => a + b)
         )
         .toSeq.sortBy(-_._2).take(50)
+    logObject(("globalHistogram", stageID, globalHistogram))
     logInfo(
       globalHistogram.foldLeft(
         s"Global histogram for repartitioning " +
