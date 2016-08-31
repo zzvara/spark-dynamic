@@ -60,6 +60,9 @@ object LogReader extends Logging {
         }
       }
 
+    logInfo(s"Number of retentive histograms for stream 1 is ${retentiveKeyHistograms.size}.")
+    logInfo(s"Number of global histograms for stream 1 is ${globalHistograms.size}.")
+
     /**
       * Partition histograms.
       */
