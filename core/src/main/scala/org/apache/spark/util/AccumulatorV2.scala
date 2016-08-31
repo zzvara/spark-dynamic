@@ -467,9 +467,10 @@ private[spark] object DataCharacteristicsAccumulator {
 
   def weightedMerge[A](zero: Double, weightOfFirst: Double)
                          (s1: Map[A, Double], s2: Seq[(A, Double)]): Seq[(A, Double)] = {
+    val weightedS1 = s1.map(pair => (pair._1, pair._2 * weightOfFirst))
     (
-      s1.map(pair => (pair._1, pair._2 * weightOfFirst)) ++
-      s2.map{ case (k, v) => k -> (v * (1 - weightOfFirst) + s1.getOrElse(k, zero)) }
+      weightedS1 ++
+      s2.map{ case (k, v) => k -> (v * (1 - weightOfFirst) + weightedS1.getOrElse(k, zero)) }
     ).toSeq
   }
 

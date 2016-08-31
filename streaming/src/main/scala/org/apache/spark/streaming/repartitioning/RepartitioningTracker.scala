@@ -330,12 +330,15 @@ class StreamingStrategy(
 extends Decider(streamID, resourceStateHandler) {
   protected val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
   protected val partitionHistogram = mutable.HashMap[Int, Long]()
-  protected var retentiveHistogram: Option[scala.collection.Seq[(Any, Double)]] = None
+  protected var retentiveKeyHistogram: Option[scala.collection.Seq[(Any, Double)]] = None
+  protected var retentivePartitionHistogram: Option[scala.collection.Seq[Double]] = None
 
   protected val histogramComparisionThreshold =
     SparkEnv.get.conf.getDouble("spark.repartitioning.histogram.comparision-threshold", 0.01d)
-  protected val retentiveHistogramWeight =
-    SparkEnv.get.conf.getDouble("spark.repartitioning.streaming.retentive.weight", 0.8d)
+  protected val retentiveKeyHistogramWeight =
+    SparkEnv.get.conf.getDouble("spark.repartitioning.streaming.retentive-key.weight", 0.8d)
+  protected val retentivePartitionHistogramWeight =
+    SparkEnv.get.conf.getDouble("spark.repartitioning.streaming.retentive-partition.weight", 0.9d)
 
   resourceStateHandler.foreach { handler =>
     numberOfPartitions = handler.apply()
@@ -379,23 +382,23 @@ extends Decider(streamID, resourceStateHandler) {
     */
   override protected def getGlobalHistogram = {
     val globalHistogram = currentGlobalHistogram.getOrElse(computeGlobalHistogram)
-    retentiveHistogram match {
+    retentiveKeyHistogram match {
       case Some(histogram) =>
         logInfo(s"Getting histogram by calculating the retentive histogram with" +
-                s" a retentive weight of $retentiveHistogramWeight.")
-        retentiveHistogram = Some(DataCharacteristicsAccumulator.weightedMerge(
-          0.0d, retentiveHistogramWeight)(
+                s" a retentive weight of $retentiveKeyHistogramWeight.")
+        retentiveKeyHistogram = Some(DataCharacteristicsAccumulator.weightedMerge(
+          0.0d, retentiveKeyHistogramWeight)(
           histogram.toMap, globalHistogram
         ).sortBy(-_._2).take(50))
       case None =>
-        retentiveHistogram = Some(globalHistogram)
+        retentiveKeyHistogram = Some(globalHistogram)
     }
     logInfo(
-      retentiveHistogram.get.foldLeft(
+      retentiveKeyHistogram.get.foldLeft(
         s"Retentive histogram is:\n")((x, y) =>
         x + s"\t${y._1}\t->\t${y._2}\n"), "DRHistogram")
-    logObject(("retentiveHistogram", streamID, retentiveHistogram.get))
-    retentiveHistogram.get
+    logObject(("retentiveHistogram", streamID, retentiveKeyHistogram.get))
+    retentiveKeyHistogram.get
   }
 
   /**
@@ -455,15 +458,41 @@ extends Decider(streamID, resourceStateHandler) {
       return false
     }
 
-    val orderedPartitionHistogram =
-      partitionHistogram.toSeq.sortBy(_._1).map(_._2).padTo(numberOfPartitions, 0L)
-    val sum = orderedPartitionHistogram.sum
-    if(sum > 0) {
-      isSignificantChange(latestPartitioningInfo, orderedPartitionHistogram.map(_.toDouble / sum),
+    val retentivePartitionHistogram = computeRetentivePartitionHistogram
+
+    if(retentivePartitionHistogram.sum > 0) {
+      isSignificantChange(
+        latestPartitioningInfo,
+        retentivePartitionHistogram,
         histogramComparisionThreshold)
     } else {
       true
     }
+  }
+
+  private def computeRetentivePartitionHistogram: Seq[Double] = {
+    val rawPartitionHistogram =
+      partitionHistogram.toSeq.sortBy(_._1).map(_._2).padTo(numberOfPartitions, 0L)
+    val sum = rawPartitionHistogram.sum
+    val normalizedPartitionHistogram = rawPartitionHistogram.map(_.toDouble / sum)
+
+    retentivePartitionHistogram match {
+      case Some(retentiveHistogram)
+      if retentiveHistogram.size == normalizedPartitionHistogram.size =>
+        retentivePartitionHistogram =
+          Some(retentiveHistogram.zip(normalizedPartitionHistogram).map {
+            case (a, b) =>
+              (a * retentivePartitionHistogramWeight) +
+              (b * (1 - retentivePartitionHistogramWeight))
+          })
+      case None =>
+        retentivePartitionHistogram = Some(normalizedPartitionHistogram)
+    }
+
+    logInfo(s"Computed retentive partition histogram." +
+            s"Size of the first element is: ${retentivePartitionHistogram.get.head}.")
+
+    retentivePartitionHistogram.get
   }
 
   override protected def decideAndValidate(
