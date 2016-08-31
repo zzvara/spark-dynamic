@@ -477,15 +477,16 @@ extends Decider(streamID, resourceStateHandler) {
     val normalizedPartitionHistogram = rawPartitionHistogram.map(_.toDouble / sum)
 
     retentivePartitionHistogram match {
-      case Some(retentiveHistogram)
-      if retentiveHistogram.size == normalizedPartitionHistogram.size =>
+      case Some(retentiveHistogram) if (retentiveHistogram.size
+        == normalizedPartitionHistogram.size) =>
         retentivePartitionHistogram =
           Some(retentiveHistogram.zip(normalizedPartitionHistogram).map {
             case (a, b) =>
               (a * retentivePartitionHistogramWeight) +
               (b * (1 - retentivePartitionHistogramWeight))
           })
-      case None =>
+      case _ =>
+        logInfo("Resetting retentive partition histogram.")
         retentivePartitionHistogram = Some(normalizedPartitionHistogram)
     }
 
