@@ -9,7 +9,7 @@ import org.apache.spark.{Partitioner, PartitioningInfo, SparkEnv, SparkException
 import scala.collection.mutable
 
 /**
-  * A simple strategy to decide when and how to repartition a stage.
+  * A simple strategy to decide when and how to repartition a (stream's) reoccurring stage.
   */
 class NaivRetentiveStrategy(
   streamID: Int,
@@ -35,29 +35,25 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
 
   resourceStateHandler.foreach { handler =>
     numberOfPartitions = handler.apply()
-    logInfo(s"Updating number of partitions with the resource-state handler to" +
-      s"$numberOfPartitions.")
+    logInfo(s"Updating number of partitions with resource-state handler to $numberOfPartitions.")
   }
 
   /**
     * Called by the RepartitioningTrackerMaster if new histogram arrives
     * for this particular job's strategy.
     */
-  override def onHistogramArrival(partitionID: Int,
-                                  keyHistogram: DataCharacteristicsAccumulator): Unit = {
-    this.synchronized {
-      logInfo(s"Recording histogram arrival for partition $partitionID.",
-        "DRCommunication", "DRHistogram")
-      histograms.update(partitionID, keyHistogram)
-    }
+  override def onHistogramArrival(
+      partitionID: Int,
+      keyHistogram: DataCharacteristicsAccumulator): Unit = this.synchronized {
+    logInfo(s"Recording histogram arrival for partition $partitionID.",
+      "DRCommunication", "DRHistogram")
+    histograms.update(partitionID, keyHistogram)
   }
 
-  def onPartitionMetricsArrival(partitionID: Int, recordsRead: Long): Unit = {
-    this.synchronized {
-      logInfo(s"Recording metrics for partition $partitionID.",
-        "DRCommunication", "DRHistogram")
-      partitionHistogram.update(partitionID, recordsRead)
-    }
+  def onPartitionMetricsArrival(partitionID: Int, recordsRead: Long): Unit = this.synchronized {
+    logInfo(s"Recording metrics for partition $partitionID.",
+      "DRCommunication", "DRHistogram")
+    partitionHistogram.update(partitionID, recordsRead)
   }
 
   override protected def clearHistograms(): Unit = {
@@ -79,7 +75,6 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
       case Some(histogram) =>
         logInfo(s"Getting histogram by calculating the retentive histogram with" +
                 s" a retentive weight of $retentiveKeyHistogramWeight.")
-
         /**
           * @todo To support otherwise weighted (not linearly) retentive key histograms,
           *       this code-path should be refactored to a method and overwritten by advanced
@@ -97,7 +92,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
       retentiveKeyHistogram.get.take(10)
         .foldLeft(
           s"Retentive histogram's top 10 is:\n"
-        )((x, y) => x + s"\t${y._1}\t->\t${y._2}\n"),
+        )((x, y) => x + s"\t ${y._1} \t -> \t ${y._2} \n"),
       "DRHistogram"
     )
     logObject(("retentiveHistogram", streamID, retentiveKeyHistogram.get))
@@ -105,7 +100,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
   }
 
   /**
-    * @todo Check distance from uniform, fall back to HashPartitioning if close.
+    * @todo Maybe this is not needed, since we do a lot of sanity checks already.
     */
   private def isSignificantChange(partitioningInfo: Option[PartitioningInfo],
                                   partitionHistogram: Seq[Double],
@@ -154,7 +149,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
     */
   override protected def preDecide(): Boolean = {
     logInfo(s"Deciding if need any repartitioning now for stream " +
-      s"with ID $streamID.", "DRRepartitioner")
+            s"with ID $streamID.", "DRRepartitioner")
     logInfo(s"Number of received histograms: ${histograms.size}", "DRHistogram")
     if (histograms.size < SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) {
       logWarning("Histogram threshold is not met.")
@@ -194,7 +189,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
     }
 
     logInfo(s"Computed retentive partition histogram." +
-      s"Size of the first element is: ${retentivePartitionHistogram.get.head}.")
+            s"Size of the first element is: ${retentivePartitionHistogram.get.head}.")
 
     retentivePartitionHistogram.get
   }
@@ -219,7 +214,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
         head match {
           case shuffledDStream: ShuffledDStream[_, _, _] =>
             logInfo(s"Resetting partitioner for DStream with ID $streamID to partitioner " +
-              s" ${newPartitioner.toString}.")
+                    s" ${newPartitioner.toString}.")
             logObject(("partitionerReset", streamID, newPartitioner))
             shuffledDStream.partitioner = newPartitioner
             partitionerHistory :+ newPartitioner
@@ -237,6 +232,9 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
   }
 }
 
+/**
+  * Factory for NaivRetentiveStrategy.
+  */
 object NaivRetentiveStrategy extends StreamingDeciderFactory {
   override def apply(streamID: Int,
                      stream: Stream,
