@@ -377,9 +377,10 @@ extends Decider(streamID, resourceStateHandler) {
     partitionHistogram.clear()
   }
 
-  /**
-    * @todo Make take configurable.
-    */
+  private def conceptDrift(retentive: Seq[(Any, Double)], fresh: Seq[(Any, Double)]): Double = {
+
+  }
+
   override protected def getGlobalHistogram = {
     val globalHistogram = currentGlobalHistogram.getOrElse(computeGlobalHistogram)
     retentiveKeyHistogram match {
@@ -389,7 +390,7 @@ extends Decider(streamID, resourceStateHandler) {
         retentiveKeyHistogram = Some(DataCharacteristicsAccumulator.weightedMerge(
           0.0d, retentiveKeyHistogramWeight)(
           histogram.toMap, globalHistogram
-        ).sortBy(-_._2).take(50))
+        ).sortBy(-_._2).take(totalSlots))
       case None =>
         retentiveKeyHistogram = Some(globalHistogram)
     }

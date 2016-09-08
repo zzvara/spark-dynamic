@@ -42,7 +42,7 @@ private[v1] object RecentTasksResource {
     listener.stageIdToData.values.flatMap {
       _.taskData.values.filter {
         taskData =>
-          taskData.taskInfo.finishTime > since || taskData.taskInfo.launchTime > since
+          taskData.taskInfo.finishTime >= since || taskData.taskInfo.launchTime >= since
       }
     }
   }

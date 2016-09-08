@@ -6,6 +6,7 @@ import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.streaming.kafka010.{ConsumerStrategies, KafkaUtils, LocationStrategies}
+import org.apache.spark.streaming.scheduler.{StreamingListener, StreamingListenerBatchCompleted}
 import twitter4j.Status
 
 object TwitterConsumer extends Logging {
@@ -61,6 +62,28 @@ object TwitterConsumer extends Logging {
     .print()
 
     context.start()
+
+    /**
+      * Listener is going to switch off the streaming job if the source goes empty.
+      */
+    context.addStreamingListener(new StreamingListener {
+      var noRecordsCount = 0
+      /**
+        * Called when processing of a batch of jobs has completed.
+        */
+      override def onBatchCompleted(batchCompleted: StreamingListenerBatchCompleted): Unit = {
+        if (batchCompleted.batchInfo.numRecords == 0) {
+          noRecordsCount += 1
+          logWarning(s"Empty batch detected ombre, $noRecordsCount times!")
+        } else {
+          noRecordsCount = 0
+        }
+        if (noRecordsCount > options('emptyBatchLimit).toString.toInt) {
+          logError("Too many empty batches bitches!")
+          context.stop(stopSparkContext = true, stopGracefully = false)
+        }
+      }
+    })
     context.awaitTermination()
   }
 
@@ -81,6 +104,8 @@ object TwitterConsumer extends Logging {
           nextOption(map ++ Map('batchDuration -> value.toInt), tail)
         case "--uniformKafkaOffset" :: value :: tail =>
           nextOption(map ++ Map('uniformKafkaOffset -> value.toInt), tail)
+        case "--emptyBatchLimit" :: value :: tail =>
+          nextOption(map ++ Map('emptyBatchLimit -> value.toInt), tail)
         case option :: tail =>
           logError(s"Unknown option '$option'!")
           throw new IllegalArgumentException("Unknown option!")
