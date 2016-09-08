@@ -1,22 +1,23 @@
-package org.apache.spark.streaming.repartitioning
+package org.apache.spark.streaming.repartitioning.decider
 
-import org.apache.spark.{Partitioner, PartitioningInfo, SparkEnv, SparkException}
 import org.apache.spark.repartitioning.Decider
 import org.apache.spark.streaming.Time
 import org.apache.spark.streaming.dstream.{ShuffledDStream, Stream}
+import org.apache.spark.streaming.repartitioning.StreamingUtils
 import org.apache.spark.util.DataCharacteristicsAccumulator
+import org.apache.spark.{Partitioner, PartitioningInfo, SparkEnv, SparkException}
 
 import scala.collection.mutable
 
 /**
   * A simple strategy to decide when and how to repartition a stage.
   */
-class StreamingStrategy(
-                         streamID: Int,
-                         stream: Stream,
-                         val perBatchSamplingRate: Int = 1,
-                         resourceStateHandler: Option[() => Int] = None)
-  extends Decider(streamID, resourceStateHandler) {
+class NaivRetentiveStrategy(
+  streamID: Int,
+  stream: Stream,
+  perBatchSamplingRate: Int = 1,
+  resourceStateHandler: Option[() => Int] = None)
+extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHandler) {
   protected val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
   protected val partitionHistogram = mutable.HashMap[Int, Long]()
   protected var retentiveKeyHistogram: Option[scala.collection.Seq[(Any, Double)]] = None
@@ -35,8 +36,6 @@ class StreamingStrategy(
       s"$numberOfPartitions.")
   }
 
-  def zeroTime: Time = stream.time
-
   /**
     * Called by the RepartitioningTrackerMaster if new histogram arrives
     * for this particular job's strategy.
@@ -50,9 +49,6 @@ class StreamingStrategy(
     }
   }
 
-  /**
-    * @todo Make partition histogram weightable.
-    */
   def onPartitionMetricsArrival(partitionID: Int, recordsRead: Long): Unit = {
     this.synchronized {
       logInfo(s"Recording metrics for partition $partitionID.",
@@ -64,10 +60,6 @@ class StreamingStrategy(
   override protected def clearHistograms(): Unit = {
     histograms.clear()
     partitionHistogram.clear()
-  }
-
-  private def conceptDrift(retentive: Seq[(Any, Double)], fresh: Seq[(Any, Double)]): Double = {
-
   }
 
   override protected def getGlobalHistogram = {
@@ -221,5 +213,14 @@ class StreamingStrategy(
   override protected def cleanup(): Unit = {
     super.cleanup()
     clearHistograms()
+  }
+}
+
+object NaivRetentiveStrategy extends StreamingDeciderFactory {
+  override def apply(streamID: Int,
+                     stream: Stream,
+                     perBatchSamplingRate: Int,
+                     resourceStateHandler: Option[() => Int]): StreamingDecider = {
+    new NaivRetentiveStrategy(streamID, stream, perBatchSamplingRate, resourceStateHandler)
   }
 }

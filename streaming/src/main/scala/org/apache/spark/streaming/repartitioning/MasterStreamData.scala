@@ -1,6 +1,6 @@
 package org.apache.spark.streaming.repartitioning
 
-import org.apache.spark.repartitioning.Decider
+import org.apache.spark.streaming.repartitioning.decider.StreamingDecider
 
 import scala.collection.mutable
 import scala.collection.mutable.Set
@@ -14,17 +14,15 @@ import scala.collection.mutable.Set
 case class MasterStreamData(
   streamID: Int,
   relatedJobs: Set[Int] = Set[Int](),
-  parentDStreams: scala.collection.immutable.Set[Int]
-  = scala.collection.immutable.Set[Int](),
-  scanStrategy: StreamingStrategy){
+  parentDStreams: scala.collection.immutable.Set[Int] = scala.collection.immutable.Set[Int](),
+  scanStrategy: StreamingDecider){
   /**
     * Deciders, which are StreamingStrategies by default for each
     * inner stage. Stages are identified in a lazy manner when a task finished.
     * A task holds a corresponding DStream ID, which defines a reoccurring
     * stage in a mini-batch.
     */
-  val strategies: mutable.Map[Int, Decider] =
-  mutable.Map[Int, Decider]()
+  val strategies: mutable.Map[Int, StreamingDecider] = mutable.Map[Int, StreamingDecider]()
 
   def addJob(jobID: Int): MasterStreamData = {
     relatedJobs += jobID

@@ -9,7 +9,7 @@ import org.apache.spark.{Partitioner, SparkContext, SparkEnv}
 class Strategy(stageID: Int,
   attemptID: Int,
   var numPartitions: Int)
-  extends Decider(stageID) {
+extends Decider(stageID) {
 
   /**
     * Called by the RepartitioningTrackerMaster if new histogram arrives

@@ -3,7 +3,7 @@ package org.apache.spark.examples.repartitioning
 import org.apache.spark._
 import org.apache.spark.streaming.{Seconds, StreamingContext, Time}
 import org.apache.spark.streaming.dstream.Stream
-import org.apache.spark.streaming.repartitioning.StreamingStrategy
+import org.apache.spark.streaming.repartitioning.decider.NaivRetentiveStrategy
 import org.apache.spark.util.DataCharacteristicsAccumulator
 
 import scala.language.reflectiveCalls
@@ -28,7 +28,7 @@ object PartitionerUpdateTest {
     val keyHistograms = Array.fill[DataCharacteristicsAccumulator](numMiniBatches, numPartitions)(new DataCharacteristicsAccumulator)
     val stream = Stream(0, Time(15), Seconds(5))
 
-    val strategy = new StreamingStrategy(0, stream, 1, Some(() => numPartitions)) {
+    val strategy = new NaivRetentiveStrategy(0, stream, 1, Some(() => numPartitions)) {
       var latestPartitioner: Partitioner = new HashPartitioner(numPartitions)
 
       override protected def getNewPartitioner(partitioningInfo: PartitioningInfo): Partitioner = {

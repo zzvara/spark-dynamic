@@ -301,7 +301,6 @@ object SparkEnv extends Logging {
       new MapOutputTrackerMasterEndpoint(
         rpcEnv, mapOutputTracker.asInstanceOf[MapOutputTrackerMaster], conf))
 
-
     val repartitioningFactoryClass
       = Utils.classForName(conf.get(
           "spark.repartitioning.factory",

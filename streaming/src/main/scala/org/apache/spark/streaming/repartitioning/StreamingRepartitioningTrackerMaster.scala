@@ -1,12 +1,13 @@
 package org.apache.spark.streaming.repartitioning
 
 import org.apache.spark.{SparkConf, SparkEnv, SparkException}
-import org.apache.spark.repartitioning.{RepartitioningTrackerMaster, ScanStrategies}
+import org.apache.spark.repartitioning.{RepartitioningTrackerFactory, RepartitioningTrackerMaster, ScanStrategies}
 import org.apache.spark.rpc.{RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler._
 import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.dstream.{DStream, ShuffledDStream, Stream}
-import org.apache.spark.util.DataCharacteristicsAccumulator
+import org.apache.spark.streaming.repartitioning.decider.{StreamingDeciderFactory, NaivRetentiveStrategy}
+import org.apache.spark.util.{DataCharacteristicsAccumulator, Utils}
 
 import scala.collection.mutable
 
@@ -20,6 +21,17 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
   private val _jobData = mutable.HashMap[Int, MasterJobData]()
 
   private var isInitialized = false
+
+  private val deciderFactoryClass =
+    Utils.classForName(
+      conf.get(
+        "spark.repartitioning.streaming.decider.factory",
+        "org.apache.spark.repartitioning.streaming.decider.NaivRetentiveStrategy")
+    ).asInstanceOf[Class[StreamingDeciderFactory]]
+
+  logInfo(s"The decider factory class is [${deciderFactoryClass.getClass.getName}].")
+
+  private val deciderFactory = deciderFactoryClass.newInstance()
 
   /**
     * For streaming mini-batches only.
@@ -96,7 +108,7 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
             StreamingContext.getActive().get.graph.getOutputStreams().toSet
           ).map(_.id)
 
-        val scanStrategy = new StreamingStrategy(streamID, stream,
+        val scanStrategy = deciderFactory(streamID, stream,
           perBatchSamplingRate = SparkEnv.get.conf.getInt(
             "spark.repartitioning.streaming.per-batch-sampling-rate", 5))
 
@@ -156,9 +168,7 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
           s"in stream ${stream.ID} with output stream ID $sID.")
         streamData.strategies.getOrElseUpdate(
           stream.ID,
-          new StreamingStrategy(
-            stream.ID, stream, 1, Some(() => getTotalSlots)
-          )
+          deciderFactory(stream.ID, stream, 1, Some(() => getTotalSlots))
         ).onHistogramArrival(taskInfo.index, dataCharacteristics)
       case None => logWarning(
         s"Could not update local histogram for streaming," +
@@ -181,8 +191,8 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) {
         val id = stream.ID
         streamData.strategies.getOrElseUpdate(
           id,
-          new StreamingStrategy(stream.ID, stream, totalSlots.intValue())
-        ).asInstanceOf[StreamingStrategy].onPartitionMetricsArrival(taskInfo.index, recordsRead)
+          deciderFactory(stream.ID, stream, totalSlots.intValue())
+        ).asInstanceOf[NaivRetentiveStrategy].onPartitionMetricsArrival(taskInfo.index, recordsRead)
       case None => logWarning(
         s"Could not update local histogram for streaming," +
           s" since streaming data does not exist for DStream" +
