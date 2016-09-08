@@ -1,6 +1,6 @@
 package org.apache.spark.repartitioning
 
-import org.apache.spark.{Partitioner, ScannerPrototype}
+import org.apache.spark.Partitioner
 
 import scala.collection.mutable
 

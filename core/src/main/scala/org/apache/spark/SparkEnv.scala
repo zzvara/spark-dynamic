@@ -22,9 +22,7 @@ import java.net.Socket
 
 import scala.collection.mutable
 import scala.util.Properties
-
 import com.google.common.collect.MapMaker
-
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.api.python.PythonWorkerFactory
 import org.apache.spark.broadcast.BroadcastManager
@@ -32,6 +30,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.memory.{MemoryManager, StaticMemoryManager, UnifiedMemoryManager}
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.network.netty.NettyBlockTransferService
+import org.apache.spark.repartitioning.{RepartitioningTracker, RepartitioningTrackerFactory, RepartitioningTrackerMaster, RepartitioningTrackerWorker}
 import org.apache.spark.rpc.{RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler.{LiveListenerBus, OutputCommitCoordinator}
 import org.apache.spark.scheduler.OutputCommitCoordinator.OutputCommitCoordinatorEndpoint
@@ -52,22 +51,22 @@ import org.apache.spark.util.{RpcUtils, Utils}
  */
 @DeveloperApi
 class SparkEnv (
-    val executorId: String,
-    private[spark] val rpcEnv: RpcEnv,
-    val serializer: Serializer,
-    val closureSerializer: Serializer,
-    val serializerManager: SerializerManager,
-    val mapOutputTracker: MapOutputTracker,
-    val repartitioningTracker: Option[RepartitioningTracker],
-    val shuffleManager: ShuffleManager,
-    val broadcastManager: BroadcastManager,
-    val blockManager: BlockManager,
-    val securityManager: SecurityManager,
-    val metricsSystem: MetricsSystem,
-    val memoryManager: MemoryManager,
-    val outputCommitCoordinator: OutputCommitCoordinator,
-    val conf: SparkConf) extends Logging {
-
+   val executorId: String,
+   private[spark] val rpcEnv: RpcEnv,
+   val serializer: Serializer,
+   val closureSerializer: Serializer,
+   val serializerManager: SerializerManager,
+   val mapOutputTracker: MapOutputTracker,
+   val repartitioningTracker: Option[RepartitioningTracker],
+   val shuffleManager: ShuffleManager,
+   val broadcastManager: BroadcastManager,
+   val blockManager: BlockManager,
+   val securityManager: SecurityManager,
+   val metricsSystem: MetricsSystem,
+   val memoryManager: MemoryManager,
+   val outputCommitCoordinator: OutputCommitCoordinator,
+   val conf: SparkConf)
+extends Logging {
   private[spark] var isStopped = false
   private val pythonWorkers = mutable.HashMap[(String, Map[String, String]), PythonWorkerFactory]()
 
@@ -306,7 +305,7 @@ object SparkEnv extends Logging {
     val repartitioningFactoryClass
       = Utils.classForName(conf.get(
           "spark.repartitioning.factory",
-          "org.apache.spark.CoreRepartitioningTrackerFactory")
+          "org.apache.spark.repartitioning.CoreRepartitioningTrackerFactory")
         ).asInstanceOf[Class[RepartitioningTrackerFactory]].newInstance()
 
     logInfo(s"Repartitioning factory class is ${repartitioningFactoryClass.getClass.getName}.")
@@ -353,7 +352,7 @@ object SparkEnv extends Logging {
     val shuffleMgrClass = shortShuffleMgrNames.getOrElse(shuffleMgrName.toLowerCase, shuffleMgrName)
     val shuffleManager = instantiateClass[ShuffleManager](shuffleMgrClass)
 
-    val useLegacyMemoryManager = conf.getBoolean("spark.memory.useLegacyMode", false)
+    val useLegacyMemoryManager = conf.getBoolean("spark.memory.useLegacyMode", defaultValue = false)
     val memoryManager: MemoryManager =
       if (useLegacyMemoryManager) {
         new StaticMemoryManager(conf, numUsableCores)

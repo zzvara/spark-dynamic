@@ -17,7 +17,6 @@
 
 package org.apache.spark.repartitioning
 
-import org.apache.spark.Scanner
 import org.apache.spark.executor.RepartitioningInfo
 
 case class WorkerTaskData(info: RepartitioningInfo, scanner: Scanner)
