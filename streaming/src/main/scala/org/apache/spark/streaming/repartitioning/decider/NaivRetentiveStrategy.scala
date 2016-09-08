@@ -1,7 +1,6 @@
 package org.apache.spark.streaming.repartitioning.decider
 
-import org.apache.spark.repartitioning.Decider
-import org.apache.spark.streaming.Time
+import org.apache.commons.collections4.queue.CircularFifoQueue
 import org.apache.spark.streaming.dstream.{ShuffledDStream, Stream}
 import org.apache.spark.streaming.repartitioning.StreamingUtils
 import org.apache.spark.util.DataCharacteristicsAccumulator
@@ -18,17 +17,21 @@ class NaivRetentiveStrategy(
   perBatchSamplingRate: Int = 1,
   resourceStateHandler: Option[() => Int] = None)
 extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHandler) {
-  protected val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
-  protected val partitionHistogram = mutable.HashMap[Int, Long]()
-  protected var retentiveKeyHistogram: Option[scala.collection.Seq[(Any, Double)]] = None
-  protected var retentivePartitionHistogram: Option[scala.collection.Seq[Double]] = None
-
   protected val histogramComparisionThreshold =
     SparkEnv.get.conf.getDouble("spark.repartitioning.histogram.comparision-threshold", 0.01d)
   protected val retentiveKeyHistogramWeight =
     SparkEnv.get.conf.getDouble("spark.repartitioning.streaming.retentive-key.weight", 0.8d)
   protected val retentivePartitionHistogramWeight =
     SparkEnv.get.conf.getDouble("spark.repartitioning.streaming.retentive-partition.weight", 0.9d)
+  protected val globalHistogramHistorySize =
+    SparkEnv.get.conf.getInt("spark.repartitioning.streaming.global-histogram.history-size", 5)
+
+  protected val partitionerHistory = scala.collection.mutable.Seq[Partitioner]()
+  protected val partitionHistogram = mutable.HashMap[Int, Long]()
+  protected var retentiveKeyHistogram: Option[scala.collection.Seq[(Any, Double)]] = None
+  protected var retentivePartitionHistogram: Option[scala.collection.Seq[Double]] = None
+  protected var globalHistogramHistory =
+    new CircularFifoQueue[Seq[(Any, Double)]](globalHistogramHistorySize)
 
   resourceStateHandler.foreach { handler =>
     numberOfPartitions = handler.apply()
@@ -63,22 +66,40 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
   }
 
   override protected def getGlobalHistogram = {
-    val globalHistogram = currentGlobalHistogram.getOrElse(computeGlobalHistogram)
+    val globalHistogram = currentGlobalHistogram.getOrElse {
+      /**
+        * The `computeGlobalHistogram` is going to overwrite the currentGlobalHistogram,
+        * so we store the current one in the global histogram history if possible.
+        */
+      currentGlobalHistogram.foreach(globalHistogramHistory.add(_))
+      computeGlobalHistogram
+    }
+
     retentiveKeyHistogram match {
       case Some(histogram) =>
         logInfo(s"Getting histogram by calculating the retentive histogram with" +
-          s" a retentive weight of $retentiveKeyHistogramWeight.")
-        retentiveKeyHistogram = Some(DataCharacteristicsAccumulator.weightedMerge(
-          0.0d, retentiveKeyHistogramWeight)(
-          histogram.toMap, globalHistogram
-        ).sortBy(-_._2).take(totalSlots))
+                s" a retentive weight of $retentiveKeyHistogramWeight.")
+
+        /**
+          * @todo To support otherwise weighted (not linearly) retentive key histograms,
+          *       this code-path should be refactored to a method and overwritten by advanced
+          *       deciders.
+          */
+        retentiveKeyHistogram = Some(
+          DataCharacteristicsAccumulator.weightedMerge(0.0d, retentiveKeyHistogramWeight)(
+            histogram.toMap, globalHistogram
+          ).sortBy(-_._2).take(totalSlots)
+        )
       case None =>
         retentiveKeyHistogram = Some(globalHistogram)
     }
     logInfo(
-      retentiveKeyHistogram.get.foldLeft(
-        s"Retentive histogram is:\n")((x, y) =>
-        x + s"\t${y._1}\t->\t${y._2}\n"), "DRHistogram")
+      retentiveKeyHistogram.get.take(10)
+        .foldLeft(
+          s"Retentive histogram's top 10 is:\n"
+        )((x, y) => x + s"\t${y._1}\t->\t${y._2}\n"),
+      "DRHistogram"
+    )
     logObject(("retentiveHistogram", streamID, retentiveKeyHistogram.get))
     retentiveKeyHistogram.get
   }
@@ -179,7 +200,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
   }
 
   override protected def decideAndValidate(
-                                            globalHistogram: scala.collection.Seq[(Any, Double)]): Boolean = {
+      globalHistogram: scala.collection.Seq[(Any, Double)]): Boolean = {
     isValidHistogram(globalHistogram)
   }
 
