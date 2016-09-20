@@ -126,4 +126,5 @@ private[spark] class TaskContextImpl(
     taskMetrics.registerAccumulator(a)
   }
 
+  override def partitionID(): Int = partitionId
 }

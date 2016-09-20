@@ -21,7 +21,7 @@ package org.apache.spark.deploy.worker
 import org.apache.spark.{SparkConf, SparkFunSuite}
 import org.apache.spark.util.SparkConfWithEnv
 
-class WorkerArgumentsTest extends SparkFunSuite {
+class WorkerReferenceArgumentsTest extends SparkFunSuite {
 
   test("Memory can't be set to 0 when cmd line args leave off M or G") {
     val conf = new SparkConf

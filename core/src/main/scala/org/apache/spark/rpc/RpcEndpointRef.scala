@@ -19,16 +19,16 @@ package org.apache.spark.rpc
 
 import scala.concurrent.Future
 import scala.reflect.ClassTag
-
 import org.apache.spark.{SparkConf, SparkException}
 import org.apache.spark.internal.Logging
+import org.apache.spark.repartitioning.core.Messageable
 import org.apache.spark.util.RpcUtils
 
 /**
  * A reference for a remote [[RpcEndpoint]]. [[RpcEndpointRef]] is thread-safe.
  */
 private[spark] abstract class RpcEndpointRef(conf: SparkConf)
-  extends Serializable with Logging {
+  extends Serializable with Logging with Messageable {
 
   private[this] val maxRetries = RpcUtils.numRetries(conf)
   private[this] val retryWaitMs = RpcUtils.retryWaitMs(conf)

@@ -2,40 +2,23 @@ package org.apache.spark.streaming.repartitioning
 
 import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
-import org.apache.spark.repartitioning.{RepartitioningStageData, RepartitioningTrackerWorker, ScanStrategies, StandaloneStrategy}
+import org.apache.spark.repartitioning.RepartitioningTrackerWorker
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.streaming.dstream.Stream
-
-import scala.collection.mutable
+import org.apache.spark.streaming.repartitioning.core.StreamingRepartitioningTrackerWorkerHelper
 
 private[spark] class StreamingRepartitioningTrackerWorker(
   override val rpcEnv: RpcEnv,
   conf: SparkConf,
   executorId: String)
-extends RepartitioningTrackerWorker(rpcEnv, conf, executorId) {
-  private val streamData = mutable.HashMap[Int, RepartitioningStreamData]()
+extends RepartitioningTrackerWorker(rpcEnv, conf, executorId)
+with StreamingRepartitioningTrackerWorkerHelper {
 
-  override def receive: PartialFunction[Any, Unit] = {
-    privateReceive orElse super.receive
+  override def componentReceive: PartialFunction[Any, Unit] = {
+    privateReceive orElse super.componentReceive
   }
 
-  private def privateReceive: PartialFunction[Any, Unit] = {
-    case ScanStrategies(scanStrategies) =>
-      logInfo(s"Received a list of scan strategies, with size of ${scanStrategies.length}.")
-      scanStrategies.foreach {
-        /**
-          * @todo The standalone part should only be in the default tracker.
-          */
-        case StandaloneStrategy(stageID, scanner) =>
-          stageData.update(stageID, RepartitioningStageData(scanner))
-        case StreamingScanStrategy(streamID, strategy, parentStreams) =>
-          logInfo(s"Received streaming strategy for stream ID $streamID.", "DRCommunication")
-          streamData.update(streamID, RepartitioningStreamData(streamID, strategy, parentStreams))
-      }
-    case StreamingScanStrategy(streamID, strategy, parentStreams) =>
-      logInfo(s"Received streaming strategy for stream ID $streamID.", "DRCommunication")
-      streamData.update(streamID, RepartitioningStreamData(streamID, strategy, parentStreams))
-  }
+  override protected def getStageData = stageData
 
   override def isDataAware(rdd: RDD[_]): Boolean = {
     if (rdd.getProperties.contains("stream")) {

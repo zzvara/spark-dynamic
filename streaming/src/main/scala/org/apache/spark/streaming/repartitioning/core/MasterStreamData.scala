@@ -1,4 +1,4 @@
-package org.apache.spark.streaming.repartitioning
+package org.apache.spark.streaming.repartitioning.core
 
 import org.apache.spark.streaming.repartitioning.decider.StreamingDecider
 

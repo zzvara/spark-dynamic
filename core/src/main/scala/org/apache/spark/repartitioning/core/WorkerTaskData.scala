@@ -15,8 +15,11 @@
  * limitations under the License.
  */
 
-package org.apache.spark.repartitioning
+package org.apache.spark.repartitioning.core
 
 import org.apache.spark.executor.RepartitioningInfo
 
-case class WorkerTaskData(info: RepartitioningInfo, scanner: Scanner)
+case class WorkerTaskData[TaskContext <: TaskContextInterface[TaskMetrics],
+                          TaskMetrics <: TaskMetricsInterface[TaskMetrics]](
+  info: RepartitioningInfo[TaskMetrics],
+  scanner: Scanner[TaskContext, TaskMetrics])

@@ -1,18 +1,19 @@
 package org.apache.spark.repartitioning
 
 import org.apache.spark.executor.ShuffleWriteMetrics
+import org.apache.spark.repartitioning.core.{Configuration, ScannerFactory}
 import org.apache.spark.util.TaskCompletionListener
 import org.apache.spark.{SparkEnv, TaskContext}
 
 class Throughput(override val totalSlots: Int) extends Scanner(totalSlots) {
   private var lastHistogramHeight: Long = 0
   private val keyHistogramWidth: Int =
-    SparkEnv.get.conf.getInt("spark.repartitioning.key-histogram.truncate", 50)
+    Configuration.internal().getInt("spark.repartitioning.key-histogram.truncate")
 
-  override def stop(): Unit = {
-    isRunning = false
-  }
-
+  /**
+    * Reconfigures the data-characteristics sampling by updating the total slots available.
+    * @param shuffleWriteMetrics Spark's shuffle write metrics.
+    */
   def updateTotalSlots(shuffleWriteMetrics: ShuffleWriteMetrics): Unit = {
     logInfo("Updating number of total slots.")
     shuffleWriteMetrics.dataCharacteristics.updateTotalSlots(totalSlots)
@@ -33,12 +34,12 @@ class Throughput(override val totalSlots: Int) extends Scanner(totalSlots) {
 
     updateTotalSlots(taskContext.taskMetrics().shuffleWriteMetrics)
 
-    Thread.sleep(SparkEnv.get.conf.getInt("spark.repartitioning.throughput.interval", 1000))
+    Thread.sleep(Configuration.internal().getInt("spark.repartitioning.throughput.interval"))
     while (isRunning) {
       val shuffleWriteMetrics = taskContext.taskMetrics().shuffleWriteMetrics
       val dataCharacteristics = shuffleWriteMetrics.dataCharacteristics
       val recordBound =
-        SparkEnv.get.conf.getInt("spark.repartitioning.throughput.record-bound", 100)
+        Configuration.internal().getInt("spark.repartitioning.throughput.record-bound")
       val histogramHeightDelta = dataCharacteristics.recordsPassed - lastHistogramHeight
       if (dataCharacteristics.width == 0) {
         logInfo(s"Histogram is empty for task ${taskContext.taskAttemptId()}. " +
@@ -55,10 +56,16 @@ class Throughput(override val totalSlots: Int) extends Scanner(totalSlots) {
             taskContext.partitionId(),
             dataCharacteristics)
       }
-      Thread.sleep(SparkEnv.get.conf.getInt("spark.repartitioning.throughput.interval", 1000))
+      Thread.sleep(Configuration.internal().getInt("spark.repartitioning.throughput.interval"))
       updateTotalSlots(taskContext.taskMetrics().shuffleWriteMetrics)
     }
     logInfo(s"Scanner is finishing for stage ${taskContext.stageId()} task" +
             s" ${taskContext.taskAttemptId()}.", "default", "strongBlue")
+  }
+}
+
+object Throughput {
+  implicit object Factory extends ScannerFactory[Throughput] {
+    override def apply(totalSlots: Int): Throughput = new Throughput(totalSlots)
   }
 }

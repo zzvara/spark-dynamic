@@ -23,6 +23,7 @@ import org.apache.spark.InternalAccumulator.{input => _, _}
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.Logging
+import org.apache.spark.repartitioning.core.TaskMetricsInterface
 import org.apache.spark.scheduler.AccumulableInfo
 import org.apache.spark.status.api.v1.BlockFetchInfo
 import org.apache.spark.storage.{BlockId, BlockResult, BlockStatus}
@@ -46,7 +47,8 @@ import scala.collection.JavaConverters._
  * be sent to the driver.
  */
 @DeveloperApi
-class TaskMetrics private[spark] () extends Serializable with Logging {
+class TaskMetrics extends TaskMetricsInterface[TaskMetrics]
+with Serializable with Logging {
   // Each metric is internally represented as an accumulator
   private val _executorDeserializeTime = new LongAccumulator
   private val _executorRunTime = new LongAccumulator
@@ -59,7 +61,7 @@ class TaskMetrics private[spark] () extends Serializable with Logging {
   private val _updatedBlockStatuses = new BlockStatusesAccumulator
   private val _blockFetches = new CollectionAccumulator[BlockFetchInfo]
 
-  var repartitioningInfo: Option[RepartitioningInfo] = None
+  var repartitioningInfo: Option[RepartitioningInfo[TaskMetrics]] = None
 
   private[spark] def addBlockFetch(blockResult: BlockResult) : Unit = {
     if (!blockResult.blockId.isShuffle) {
@@ -69,6 +71,9 @@ class TaskMetrics private[spark] () extends Serializable with Logging {
       shuffleReadMetrics.addBlockFetch(blockResult)
     }
   }
+
+  override def writeCharacteristics: DataCharacteristicsAccumulator =
+    shuffleWriteMetrics.dataCharacteristics
 
   def blockFetchInfos: Seq[BlockFetchInfo] = _blockFetches.value.asScala
 

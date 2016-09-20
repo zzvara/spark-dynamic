@@ -30,7 +30,8 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.memory.{MemoryManager, StaticMemoryManager, UnifiedMemoryManager}
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.network.netty.NettyBlockTransferService
-import org.apache.spark.repartitioning.{RepartitioningTracker, RepartitioningTrackerFactory, RepartitioningTrackerMaster, RepartitioningTrackerWorker}
+import org.apache.spark.repartitioning.core.{Messageable, RepartitioningTracker}
+import org.apache.spark.repartitioning.{RepartitioningTrackerFactory, RepartitioningTrackerMaster, RepartitioningTrackerWorker}
 import org.apache.spark.rpc.{RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler.{LiveListenerBus, OutputCommitCoordinator}
 import org.apache.spark.scheduler.OutputCommitCoordinator.OutputCommitCoordinatorEndpoint
@@ -51,21 +52,21 @@ import org.apache.spark.util.{RpcUtils, Utils}
  */
 @DeveloperApi
 class SparkEnv (
-   val executorId: String,
-   private[spark] val rpcEnv: RpcEnv,
-   val serializer: Serializer,
-   val closureSerializer: Serializer,
-   val serializerManager: SerializerManager,
-   val mapOutputTracker: MapOutputTracker,
-   val repartitioningTracker: Option[RepartitioningTracker],
-   val shuffleManager: ShuffleManager,
-   val broadcastManager: BroadcastManager,
-   val blockManager: BlockManager,
-   val securityManager: SecurityManager,
-   val metricsSystem: MetricsSystem,
-   val memoryManager: MemoryManager,
-   val outputCommitCoordinator: OutputCommitCoordinator,
-   val conf: SparkConf)
+  val executorId: String,
+  private[spark] val rpcEnv: RpcEnv,
+  val serializer: Serializer,
+  val closureSerializer: Serializer,
+  val serializerManager: SerializerManager,
+  val mapOutputTracker: MapOutputTracker,
+  val repartitioningTracker: Option[RepartitioningTracker[RpcEndpointRef]],
+  val shuffleManager: ShuffleManager,
+  val broadcastManager: BroadcastManager,
+  val blockManager: BlockManager,
+  val securityManager: SecurityManager,
+  val metricsSystem: MetricsSystem,
+  val memoryManager: MemoryManager,
+  val outputCommitCoordinator: OutputCommitCoordinator,
+  val conf: SparkConf)
 extends Logging {
   private[spark] var isStopped = false
   private val pythonWorkers = mutable.HashMap[(String, Map[String, String]), PythonWorkerFactory]()
@@ -77,7 +78,6 @@ extends Logging {
   private[spark] var driverTmpDir: Option[String] = None
 
   private[spark] def stop() {
-
     if (!isStopped) {
       isStopped = true
       pythonWorkers.values.foreach(_.stop())
@@ -134,7 +134,7 @@ extends Logging {
   def repartitioningWorker(): Option[RepartitioningTrackerWorker] = {
     repartitioningTracker match {
       case Some(master: RepartitioningTrackerMaster) =>
-        Some(master.getLocalWorker.get)
+        Some(master.getLocalWorker.get.asInstanceOf[RepartitioningTrackerWorker])
       case _ =>
         repartitioningTracker.asInstanceOf[Option[RepartitioningTrackerWorker]]
     }
@@ -319,7 +319,7 @@ object SparkEnv extends Logging {
             registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,
               repartitioningTrackerMaster)
 
-          listenerBus.addListener(repartitioningTrackerMaster)
+          listenerBus.addListener(repartitioningTrackerMaster.eventListener)
 
           if (isLocal) {
             repartitioningTrackerMaster.initializeLocalWorker()

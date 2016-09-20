@@ -1,4 +1,4 @@
-package org.apache.spark.repartitioning
+package org.apache.spark.repartitioning.core
 
 /**
  * Enumeration for repartitioning modes. These settings are global right now,

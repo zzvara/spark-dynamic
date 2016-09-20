@@ -235,7 +235,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
 /**
   * Factory for NaivRetentiveStrategy.
   */
-object NaivRetentiveStrategy extends StreamingDeciderFactory {
+object NaivRetentiveStrategyFactory extends StreamingDeciderFactory {
   override def apply(streamID: Int,
                      stream: Stream,
                      perBatchSamplingRate: Int,

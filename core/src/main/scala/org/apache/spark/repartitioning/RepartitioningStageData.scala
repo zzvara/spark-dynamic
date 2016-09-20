@@ -1,13 +1,15 @@
 package org.apache.spark.repartitioning
 
 import org.apache.spark.Partitioner
+import org.apache.spark.repartitioning.core.{ScannerFactory, TaskContextInterface, TaskMetricsInterface, WorkerTaskData}
 
 import scala.collection.mutable
 
-case class RepartitioningStageData(
-  var scannerPrototype: ScannerPrototype,
-  var scannedTasks: Option[mutable.Map[Long, WorkerTaskData]] =
-    Some(mutable.Map[Long, WorkerTaskData]()),
+case class RepartitioningStageData[TaskContext <: TaskContextInterface[TaskMetrics],
+                                   TaskMetrics <: TaskMetricsInterface[TaskMetrics]](
+  var scanner: core.Scanner[TaskContext, TaskMetrics],
+  var scannedTasks: Option[mutable.Map[Long, WorkerTaskData[TaskContext, TaskMetrics]]] =
+  Some(mutable.Map[Long, WorkerTaskData[TaskContext, TaskMetrics]]()),
   var partitioner: Option[Partitioner] = None,
   var version: Option[Int] = Some(0)) {
 

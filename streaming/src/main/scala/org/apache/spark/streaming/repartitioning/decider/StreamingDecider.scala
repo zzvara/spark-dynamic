@@ -1,6 +1,6 @@
 package org.apache.spark.streaming.repartitioning.decider
 
-import org.apache.spark.repartitioning.Decider
+import org.apache.spark.repartitioning.core.Decider
 import org.apache.spark.streaming.Time
 import org.apache.spark.streaming.dstream.Stream
 

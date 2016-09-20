@@ -20,6 +20,7 @@ package org.apache.spark.executor
 import org.apache.spark.Partitioner
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.ColorfulLogging
+import org.apache.spark.repartitioning.core.TaskMetricsInterface
 import org.apache.spark.util.{DataCharacteristicsAccumulator, LongAccumulator}
 
 import scala.collection.mutable
@@ -130,7 +131,7 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   def shuffleRecordsWritten: Long = recordsWritten
 }
 
-class RepartitioningInfo(
+class RepartitioningInfo[TaskMetrics <: TaskMetricsInterface[TaskMetrics]](
   val stageID: Int,
   val taskID: Long,
   val executorName: String,
@@ -149,7 +150,7 @@ class RepartitioningInfo(
   }
 
   def getHistogramMeta: DataCharacteristicsAccumulator = {
-    taskMetrics.shuffleWriteMetrics.dataCharacteristics
+    taskMetrics.writeCharacteristics
   }
 
   def finishTracking(): Unit = {

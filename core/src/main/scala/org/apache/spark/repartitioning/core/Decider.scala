@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.repartitioning
+package org.apache.spark.repartitioning.core
 
 import org.apache.spark._
 import org.apache.spark.internal.ColorfulLogging
@@ -32,7 +32,12 @@ import scala.util.hashing.MurmurHash3
   * That means a decider strategy is always bound to a specific stage in batch mode, or
   * to a stream in streaming mode.
   *
+  * A stageID of Spark should be a vertexID in Flink.
+  *
   * @todo Add support to check distance from uniform distribution.
+  * @param stageID A Spark stage ID, stream ID or a vertex ID in Flink.
+  * @param resourceStateHandler Optional function that can query the state of the resources
+  *                             available for the application.
   */
 abstract class Decider(
   stageID: Int,
@@ -65,7 +70,7 @@ extends ColorfulLogging with Serializable {
     * Depth of the probability-cut in the new {{KeyIsolatorPartitioner}}.
     */
   protected val treeDepthHint =
-    SparkEnv.get.conf.getInt("spark.repartitioning.partitioner-tree-depth", 3)
+    Configuration.get().internal.getInt("repartitioning.partitioner-tree-depth")
 
   /**
     * Current, active global histogram that has been computed from the
@@ -118,7 +123,7 @@ extends ColorfulLogging with Serializable {
       PartitioningInfo.newInstance(globalHistogram, totalSlots, treeDepthHint)
     val multiplier = math.min(initialInfo.level / initialInfo.sortedValues.head, 2)
     numberOfPartitions = (totalSlots * multiplier.ceil.toInt) - 1
-    if (SparkEnv.get.conf.getBoolean("spark.repartitioning.streaming.force-slot-size", false)) {
+    if (Configuration.internal().getBoolean("repartitioning.streaming.force-slot-size")) {
       numberOfPartitions = totalSlots - 1
     }
     val partitioningInfo =

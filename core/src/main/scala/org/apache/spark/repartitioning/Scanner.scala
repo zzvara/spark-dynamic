@@ -1,23 +1,9 @@
 package org.apache.spark.repartitioning
 
 import org.apache.spark.TaskContext
-import org.apache.spark.internal.ColorfulLogging
+import org.apache.spark.executor.TaskMetrics
 
-/**
-  * Decides when to send the histogram to the master from the workers.
-  *
-  * This strategy should run somewhere near the TaskMetrics and should decide
-  * based on many factors when to send the histogram to the master.
-  * Also, it should declare the sampling method.
-  */
-abstract class Scanner(val totalSlots: Int) extends Serializable
-with Runnable with ColorfulLogging {
-  var taskContext: TaskContext = _
-  var isRunning: Boolean = false
+abstract class Scanner(totalSlots: Int)
+extends core.Scanner[TaskContext, TaskMetrics](totalSlots) {
 
-  def stop(): Unit
-
-  def setContext(context: TaskContext): Unit = {
-    taskContext = context
-  }
 }

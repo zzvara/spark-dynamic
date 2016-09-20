@@ -3,7 +3,10 @@ package org.apache.spark.repartitioning
 import org.apache.spark.SparkConf
 import org.apache.spark.rpc.RpcEnv
 
-class CoreRepartitioningTrackerFactory extends RepartitioningTrackerFactory {
+/**
+  * Factory to create a core (batch) repartitioning tracker.
+  */
+class BatchRepartitioningTrackerFactory extends RepartitioningTrackerFactory {
   def createMaster(rpcEnv: RpcEnv, conf: SparkConf): RepartitioningTrackerMaster = {
     new RepartitioningTrackerMaster(rpcEnv, conf)
   }
