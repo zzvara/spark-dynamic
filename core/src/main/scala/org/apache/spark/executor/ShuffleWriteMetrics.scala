@@ -53,7 +53,7 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   }
 
   private[spark] def setDataCharacteristics(s: Map[Any, Double]): Unit = {
-    _dataCharacteristics.setValue(mutable.Map[Any, Double]() ++ s)
+    _dataCharacteristics.setValue(s)
   }
 
   private[spark] def setRepartitioner(repartitioner: Partitioner) {

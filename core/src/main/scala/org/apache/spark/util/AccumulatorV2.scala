@@ -24,9 +24,11 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 import org.apache.spark.internal.Logging
+import org.apache.spark.repartitioning.core.Configuration
 import org.apache.spark.{InternalAccumulator, SparkContext, SparkEnv, TaskContext}
 import org.apache.spark.scheduler.AccumulableInfo
 
+import scala.collection.immutable.HashMap
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
@@ -491,20 +493,20 @@ class WeightableDataCharacteristicsAccumulator extends DataCharacteristicsAccumu
 
 class DataCharacteristicsAccumulator
 extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Logging {
-  private var _map: mutable.Map[Any, Double] = new mutable.HashMap[Any, Double]()
+  private var _map: Map[Any, Double] = HashMap[Any, Double]()
 
   private val TAKE: Int =
-    SparkEnv.get.conf.getInt("spark.data-characteristics.take", 4)
+    Configuration.internal().getInt("repartitioning.data-characteristics.take")
   private val HISTOGRAM_SCALE_BOUNDARY: Int =
-    SparkEnv.get.conf.getInt("spark.data-characteristics.histogram-scale-boundary", 20)
+    Configuration.internal().getInt("repartitioning.data-characteristics.histogram-scale-boundary")
   private val BACKOFF_FACTOR: Double =
-    SparkEnv.get.conf.getDouble("spark.data-characteristics.backoff-factor", 2.0)
+    Configuration.internal().getDouble("repartitioning.data-characteristics.backoff-factor")
   private val DROP_BOUNDARY: Double =
-    SparkEnv.get.conf.getDouble("spark.data-characteristics.drop-boundary", 0.001)
+    Configuration.internal().getDouble("repartitioning.data-characteristics.drop-boundary")
   private val HISTOGRAM_SIZE_BOUNDARY: Int =
-    SparkEnv.get.conf.getInt("spark.data-characteristics.histogram-size-boundary", 100)
+    Configuration.internal().getInt("repartitioning.data-characteristics.histogram-size-boundary")
   private val HISTOGRAM_COMPACTION: Int =
-    SparkEnv.get.conf.getInt("spark.data-characteristics.histogram-compaction", 60)
+    Configuration.internal().getInt("repartitioning.data-characteristics.histogram-compaction")
   /**
     * Rate in which records are put into the histogram.
     * Value represent that each n-th input is recorded.
@@ -545,11 +547,11 @@ extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Logging {
 
   override def copy(): AccumulatorV2[(Any, Double), Map[Any, Double]] = {
     val newMap = new DataCharacteristicsAccumulator
-    newMap._map ++ _map
+    newMap.setValue(_map)
     newMap
   }
 
-  override def reset(): Unit = _map.clear()
+  override def reset(): Unit = _map = _map.empty
 
   override def add(v: (Any, Double)): Unit = {
     val pair = v
@@ -578,12 +580,12 @@ extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Logging {
         if (_width > HISTOGRAM_SIZE_BOUNDARY) {
           _width = histogramCompaction
           _nextScaleBoundary = _width + HISTOGRAM_SCALE_BOUNDARY
-          _map = mutable.Map[Any, Double]() ++ scaledHistogram.toSeq.sortBy(-_._2).take(histogramCompaction).toMap
+          _map = scaledHistogram.toSeq.sortBy(-_._2).take(histogramCompaction).toMap
         } else {
-          _map = mutable.Map[Any, Double]() ++ scaledHistogram
+          _map = scaledHistogram
         }
       } else { // No need to cut the histogram.
-        _map = mutable.Map[Any, Double]() ++ updatedHistogram
+        _map = updatedHistogram
       }
     } // Else histogram does not change.
   }
@@ -602,11 +604,9 @@ extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Logging {
   /**
     * Defines the current value of this accumulator
     */
-  override def value: Map[Any, Double] = {
-    scala.collection.immutable.HashMap[Any, Double]() ++ _map
-  }
+  override def value: Map[Any, Double] = _map
 
-  def setValue(newMap: mutable.Map[Any, Double]) = {
+  def setValue(newMap: Map[Any, Double]) = {
     _map = newMap
   }
 }

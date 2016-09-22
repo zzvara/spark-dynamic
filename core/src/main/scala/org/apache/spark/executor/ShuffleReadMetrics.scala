@@ -168,7 +168,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable with Logging {
   }
 
   private[spark] def setDataCharacteristics(s: Map[Any, Double]): Unit = {
-    _dataCharacteristics.setValue(mutable.Map[Any, Double]() ++ s)
+    _dataCharacteristics.setValue(s)
   }
 
   /**
