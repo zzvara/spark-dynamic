@@ -18,6 +18,8 @@ object ChaosMonkey extends Logging {
   def main(arguments: Array[String]): Unit = {
     options = parseArguments(arguments)
 
+    options('numberOfBananas).toString.split(",").foreach(spark.addJar)
+
     val numberOfBananas = options('numberOfBananas).toString.toInt
     val chanceOfNewBreed = options('chanceOfNewBreed).toString.toDouble
     val chanceOfProgress = options('chanceOfProgress).toString.toDouble
@@ -25,11 +27,13 @@ object ChaosMonkey extends Logging {
     val chanceOfJoin = options('chanceOfJoin).toString.toDouble
     val chanceOfCoGroupFour = options('chanceOfCoGroupFour).toString.toDouble
     val chanceOfCoGroupThree = options('chanceOfCoGroupThree).toString.toDouble
+    val minimumNumberOfPartitions = options('minimumNumberOfPartitions).toString.toInt
     val maximumNumberOfPartitions = options('maximumNumberOfPartitions).toString.toInt
     val aggregateResurrectionSize = options('aggregateResurrectionSize).toString.toInt
 
     logInfo("Going to create at least one new breed.")
-    incubator += newBreed(10000, maximumNumberOfPartitions)
+    incubator += newBreed(10000,
+      getPartitions(maximumNumberOfPartitions, minimumNumberOfPartitions))
 
     (0 until numberOfBananas).foreach { banana =>
       scala.math.random match {
@@ -84,6 +88,10 @@ object ChaosMonkey extends Logging {
     incubator(breedID)
   }
 
+  def getPartitions(max: Int, min: Int) = {
+    ((math.random * (max - min)) + min).toInt
+  }
+
   def newBreed(size: Int, numberOfPartitions: Int): RDD[(Int, Double)] = {
     logInfo(s"Creating new breed with $size number of records and $numberOfPartitions" +
       s" number of partitions")
@@ -97,6 +105,8 @@ object ChaosMonkey extends Logging {
       def isSwitch(s : String) = s(0) == '-'
       list match {
         case Nil => map
+        case "--jars" :: value :: tail =>
+          nextOption(map ++ Map('jars -> value), tail)
         case "--numberOfBananas" :: value :: tail =>
           nextOption(map ++ Map('numberOfBananas -> value), tail)
         case "--chanceOfNewBreed" :: value :: tail =>
@@ -111,6 +121,8 @@ object ChaosMonkey extends Logging {
           nextOption(map ++ Map('chanceOfCoGroupFour -> value), tail)
         case "--chanceOfCoGroupThree" :: value :: tail =>
           nextOption(map ++ Map('chanceOfCoGroupThree -> value), tail)
+        case "--minimumNumberOfPartitions" :: value :: tail =>
+          nextOption(map ++ Map('minimumNumberOfPartitions -> value), tail)
         case "--maximumNumberOfPartitions" :: value :: tail =>
           nextOption(map ++ Map('maximumNumberOfPartitions -> value), tail)
         case "--aggregateResurrectionSize" :: value :: tail =>

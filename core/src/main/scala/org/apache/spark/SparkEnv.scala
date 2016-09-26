@@ -304,7 +304,7 @@ object SparkEnv extends Logging {
     val repartitioningFactoryClass
       = Utils.classForName(conf.get(
           "spark.repartitioning.factory",
-          "org.apache.spark.repartitioning.CoreRepartitioningTrackerFactory")
+          "org.apache.spark.repartitioning.BatchRepartitioningTrackerFactory")
         ).asInstanceOf[Class[RepartitioningTrackerFactory]].newInstance()
 
     logInfo(s"Repartitioning factory class is ${repartitioningFactoryClass.getClass.getName}.")

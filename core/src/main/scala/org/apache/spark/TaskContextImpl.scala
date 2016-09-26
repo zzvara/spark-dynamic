@@ -127,4 +127,6 @@ private[spark] class TaskContextImpl(
   }
 
   override def partitionID(): Int = partitionId
+
+  override def attemptId(): Int = taskAttemptId.toInt
 }
