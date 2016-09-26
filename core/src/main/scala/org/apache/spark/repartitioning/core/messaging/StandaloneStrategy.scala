@@ -9,5 +9,5 @@ import org.apache.spark.repartitioning.core.{TaskContextInterface, TaskMetricsIn
 case class StandaloneStrategy[TaskContext <: TaskContextInterface[TaskMetrics],
                               TaskMetrics <: TaskMetricsInterface[TaskMetrics]](
   stageID: Int,
-  scanner: core.Scanner[TaskContext, TaskMetrics])
+  scanner: core.ScannerFactory[core.Scanner[TaskContext, TaskMetrics]])
 extends ScanStrategy

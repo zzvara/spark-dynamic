@@ -4,7 +4,7 @@ import org.apache.spark.TaskContext
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.internal.Logging
 import org.apache.spark.repartitioning.RepartitioningStageData
-import org.apache.spark.repartitioning.core.Scanner
+import org.apache.spark.repartitioning.core.{Scanner, ScannerFactory}
 import org.apache.spark.repartitioning.core.messaging.{ScanStrategies, StandaloneStrategy}
 import org.apache.spark.streaming.repartitioning.{RepartitioningStreamData, StreamingScanStrategy}
 
@@ -24,7 +24,7 @@ trait StreamingRepartitioningTrackerWorkerHelper extends Logging {
           */
         case StandaloneStrategy(stageID, scanner) =>
           getStageData.update(stageID, RepartitioningStageData[TaskContext, TaskMetrics](
-            scanner.asInstanceOf[Scanner[TaskContext, TaskMetrics]]))
+            scanner.asInstanceOf[ScannerFactory[Scanner[TaskContext, TaskMetrics]]]))
         case StreamingScanStrategy(streamID, strategy, parentStreams) =>
           logInfo(s"Received streaming strategy for stream ID $streamID.")
           streamData.update(streamID, RepartitioningStreamData(streamID, strategy, parentStreams))

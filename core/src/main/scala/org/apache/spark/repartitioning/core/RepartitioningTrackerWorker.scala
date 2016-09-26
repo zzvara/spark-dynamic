@@ -76,7 +76,7 @@ extends RepartitioningTracker[MasterReference] {
             /**
               * @todo Warning! Scanner prototype initialized with 0 total slots.
               */
-            val scanner = sd.scanner
+            val scanner = sd.scanner.apply(0, sendHistogram)
             scanner.taskContext = taskContext
             val thread = new Thread(scanner)
             thread.start()
@@ -115,7 +115,9 @@ extends RepartitioningTracker[MasterReference] {
 
   protected def componentReceive: PartialFunction[Any, Unit] = this.synchronized {
     case StandaloneStrategy(stageID, scanner) =>
-      val castedScanner = scanner.asInstanceOf[core.Scanner[TaskContext, TaskMetrics]]
+      val castedScanner = scanner.asInstanceOf[
+        core.ScannerFactory[core.Scanner[TaskContext, TaskMetrics]]
+      ]
       logInfo(s"Received scan strategy for stage $stageID.", "DRCommunication")
       stageData.put(stageID, RepartitioningStageData[TaskContext, TaskMetrics](castedScanner))
     case RepartitioningStrategy(stageID, repartitioner, version) =>
@@ -137,7 +139,7 @@ extends RepartitioningTracker[MasterReference] {
         case StandaloneStrategy(stageID,
                                 scanner) =>
           stageData.put(stageID, RepartitioningStageData[TaskContext, TaskMetrics](
-            scanner.asInstanceOf[core.Scanner[TaskContext, TaskMetrics]]))
+            scanner.asInstanceOf[core.ScannerFactory[core.Scanner[TaskContext, TaskMetrics]]]))
       }
     case ShutDownScanners(stageID) =>
       logInfo(s"Stopping scanners for stage $stageID on executor $executorID.",

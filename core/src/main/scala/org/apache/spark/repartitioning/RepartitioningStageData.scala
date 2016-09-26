@@ -7,7 +7,7 @@ import scala.collection.mutable
 
 case class RepartitioningStageData[TaskContext <: TaskContextInterface[TaskMetrics],
                                    TaskMetrics <: TaskMetricsInterface[TaskMetrics]](
-  var scanner: core.Scanner[TaskContext, TaskMetrics],
+  var scanner: core.ScannerFactory[core.Scanner[TaskContext, TaskMetrics]],
   var scannedTasks: Option[mutable.Map[Long, WorkerTaskData[TaskContext, TaskMetrics]]] =
   Some(mutable.Map[Long, WorkerTaskData[TaskContext, TaskMetrics]]()),
   var partitioner: Option[Partitioner] = None,

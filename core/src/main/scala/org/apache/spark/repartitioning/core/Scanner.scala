@@ -1,6 +1,7 @@
 package org.apache.spark.repartitioning.core
 
 import org.apache.spark.internal.ColorfulLogging
+import org.apache.spark.util.DataCharacteristicsAccumulator
 
 /**
   * Decides when to send the histogram to the master from the workers.
@@ -11,7 +12,9 @@ import org.apache.spark.internal.ColorfulLogging
   */
 abstract class Scanner[
   TaskContext <: TaskContextInterface[TaskMetrics],
-  TaskMetrics <: TaskMetricsInterface[TaskMetrics]](val totalSlots: Int)
+  TaskMetrics <: TaskMetricsInterface[TaskMetrics]](
+  val totalSlots: Int,
+  histogramDrop: (Int, Long, Int, DataCharacteristicsAccumulator) => Unit)
 extends Serializable with Runnable with ColorfulLogging {
   var taskContext: TaskContext = _
 

@@ -77,6 +77,8 @@ extends RepartitioningTracker[ComponentReference] {
     */
   def initializeLocalWorker(): Unit
 
+  def scannerFactory(): ScannerFactory[Throughput[TaskContext, TaskMetrics]]
+
   /**
     * Gets the local worker.
     */
@@ -145,7 +147,7 @@ extends RepartitioningTracker[ComponentReference] {
                 s"mode $repartitioningMode.", "DRCommunication")
         val scanStrategy = StandaloneStrategy[TaskContext, TaskMetrics](
           stageID,
-          implicitly[ScannerFactory[Scanner[TaskContext, TaskMetrics]]].apply(totalSlots.intValue())
+          scannerFactory
         )
         _stageData.update(stageID,
           MasterStageData(stageID,

@@ -1,13 +1,14 @@
 package org.apache.spark.repartitioning.core
 
-import org.apache.spark.SparkEnv
 import org.apache.spark.repartitioning.core
 import org.apache.spark.util.DataCharacteristicsAccumulator
 
 abstract class Throughput[
   TaskContext <: TaskContextInterface[TaskMetrics],
-  TaskMetrics <: TaskMetricsInterface[TaskMetrics]](totalSlots: Int)
-extends core.Scanner[TaskContext, TaskMetrics](totalSlots) {
+  TaskMetrics <: TaskMetricsInterface[TaskMetrics]](
+  totalSlots: Int,
+  histogramDrop: (Int, Long, Int, DataCharacteristicsAccumulator) => Unit)
+extends core.Scanner[TaskContext, TaskMetrics](totalSlots, histogramDrop) {
   private var lastHistogramHeight: Long = 0
   private val keyHistogramWidth: Int =
     Configuration.internal().getInt("spark.repartitioning.key-histogram.truncate")
@@ -52,12 +53,11 @@ extends core.Scanner[TaskContext, TaskMetrics](totalSlots) {
                 s"processed to send the histogram to the driver.", "DRHistogram")
       } else {
         lastHistogramHeight = dataCharacteristics.recordsPassed
-        SparkEnv.get.repartitioningWorker().get
-          .sendHistogram(
-            taskContext.stageId(),
-            taskContext.attemptNumber(),
-            taskContext.partitionID(),
-            dataCharacteristics)
+        histogramDrop(
+          taskContext.stageId(),
+          taskContext.attemptNumber(),
+          taskContext.partitionID(),
+          dataCharacteristics)
       }
       Thread.sleep(Configuration.internal().getInt("spark.repartitioning.throughput.interval"))
       updateTotalSlots(taskContext.taskMetrics().writeCharacteristics)

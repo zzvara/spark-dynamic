@@ -90,4 +90,8 @@ with RpcEndpoint {
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     componentReceiveAndReply(context)
   }
+
+  override def scannerFactory(): ScannerFactory[core.Throughput[TaskContext, TaskMetrics]] = {
+    implicitly[ScannerFactory[Throughput]]
+  }
 }
