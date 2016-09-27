@@ -35,6 +35,7 @@ object PartitioningInfo {
 
   def newInstance(globalHistogram: scala.collection.Seq[(Any, Double)], numPartitions: Int,
     treeDepthHint: Int, sCutHint: Int = 0): PartitioningInfo = {
+    require(numPartitions > 0, "Where's my number of partitions, I can not call you maybe!")
     val sortedValues = globalHistogram.map(_._2).toArray.take(numPartitions)
     val sortedKeys = globalHistogram.map(_._1).toArray.take(numPartitions)
     val pCutHint = Math.pow(2, treeDepthHint - 1).toInt
