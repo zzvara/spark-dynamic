@@ -125,9 +125,8 @@ extends RepartitioningTracker[MasterReference] {
               s"stage $stageID with repartitioner $repartitioner.",
               "DRCommunication", "DRRepartitioner", "cyan")
       updateRepartitioners(stageID, repartitioner, version)
-      logInfo(s"Finished processing repartitioning strategy for stage $stageID.",
-        "cyan")
-      if (SparkEnv.get.conf.getBoolean("spark.repartitioning.only.once", defaultValue = true)) {
+      logInfo(s"Finished processing repartitioning strategy for stage $stageID.", "cyan")
+      if (Configuration.internal().getBoolean("repartitioning.only.once")) {
         logInfo("Shutting down scanners because repartitioning mode is set to only-once")
         logInfo(s"Stopping scanners for stage $stageID on executor $executorID.",
           "DRCommunication", "cyan")
@@ -151,6 +150,9 @@ extends RepartitioningTracker[MasterReference] {
       clearStageData(stageID)
   }
 
+  /**
+    * Updates the WorkerTaskData's repartitioning info with the specified repartitioner.
+    */
   private def updateRepartitioners(stageID: Int, repartitioner: Partitioner, version: Int): Unit = {
     stageData.get(stageID) match {
       case Some(sd) =>
@@ -158,18 +160,18 @@ extends RepartitioningTracker[MasterReference] {
         sd.partitioner = Some(repartitioner)
         sd.version = Some(version)
         logInfo(s"Scanned tasks before repartitioning on worker $executorID, ${sd.scannedTasks}",
-          "DRRepartitioner")
+                "DRRepartitioner")
         logInfo(s"Scanned partitions are" +
-          s" ${scannedTasks.values.map(_.scanner.taskContext.partitionID())}",
-          "DRRepartitioner")
+                s" ${scannedTasks.values.map(_.scanner.taskContext.partitionID())}",
+                "DRRepartitioner")
         scannedTasks.values.foreach(wtd => {
           wtd.info.updateRepartitioner(repartitioner, version)
           logInfo(s"Repartitioner set for stage $stageID task ${wtd.info.taskID} on" +
-            s"worker $executorID", "DRRepartitioner")
+                  s"worker $executorID", "DRRepartitioner")
         })
       case None =>
         logWarning(s"Repartitioner arrived for non-registered stage of id $stageID." +
-          s"Doing nothing.", "DRRepartitioner")
+                   s"Doing nothing.", "DRRepartitioner")
     }
   }
 

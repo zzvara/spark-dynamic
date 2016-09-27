@@ -15,9 +15,9 @@ import org.apache.spark.scheduler._
   */
 private[spark] class RepartitioningTrackerMaster(
   val rpcEnv: RpcEnv,
-  conf: SparkConf)(implicit ev1: ScannerFactory[Throughput])
+  conf: SparkConf)(implicit ev1: ScannerFactory[Throughput], ev2: StrategyFactory[Strategy])
 extends core.RepartitioningTrackerMaster[
-  RpcEndpointRef, RpcCallContext, TaskContext, TaskMetrics, RDD[_]]()(ev1)
+  RpcEndpointRef, RpcCallContext, TaskContext, TaskMetrics, RDD[_]]()(ev1, ev2)
 with RpcEndpoint {
   class Listener extends SparkListener {
     override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = {

@@ -2,6 +2,7 @@ package org.apache.spark.repartitioning
 
 import org.apache.spark.SparkConf
 import org.apache.spark.rpc.RpcEnv
+import org.apache.spark.repartitioning.NaivBatchStrategy._
 
 /**
   * Factory to create a core (batch) repartitioning tracker.

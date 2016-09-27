@@ -12,7 +12,7 @@ import org.apache.spark.{Partitioner, SparkContext, SparkEnv}
   * @param attemptID Attempt number.
   * @param numPartitions Default number of partitions.
   */
-class Strategy(
+abstract class Strategy(
   stageID: Int,
   attemptID: Int,
   var numPartitions: Int)
@@ -22,8 +22,9 @@ extends Decider(stageID) {
     * Called by the RepartitioningTrackerMaster if new histogram arrives
     * for this particular job's strategy.
     */
-  override def onHistogramArrival(partitionID: Int,
-    keyHistogram: DataCharacteristicsAccumulator): Unit = {
+  override def onHistogramArrival(
+      partitionID: Int,
+      keyHistogram: DataCharacteristicsAccumulator): Unit = {
     this.synchronized {
       if (keyHistogram.version == currentVersion) {
         logInfo(s"Recording histogram arrival for partition $partitionID.",
@@ -67,11 +68,19 @@ extends Decider(stageID) {
     isValidHistogram(globalHistogram)
   }
 
+  /**
+    * Used by `resetPartitioners` to broadcast the partitioner.
+    * @return
+    */
+  def getTrackerMaster: RepartitioningTrackerMaster[_, _, _, _, _]
+
+  /**
+    * This method broadcasts the new partitioner to the workers using the RTM.
+    * Additionally it updates the broadcast history and clears current histograms.
+    * @param newPartitioner Partitioner to reset to.
+    */
   override protected def resetPartitioners(newPartitioner: Partitioner): Unit = {
-    SparkContext.getOrCreate().dagScheduler.refineChildrenStages(stageID, newPartitioner.numPartitions)
-    SparkEnv.get.repartitioningTracker.get
-      .asInstanceOf[RepartitioningTrackerMaster[_, _, _, _, _]]
-      .broadcastRepartitioningStrategy(stageID, newPartitioner, currentVersion)
+    getTrackerMaster.broadcastRepartitioningStrategy(stageID, newPartitioner, currentVersion)
     broadcastHistory += newPartitioner
     logInfo(s"Version of histograms pushed up for stage $stageID", "DRHistogram")
     clearHistograms()

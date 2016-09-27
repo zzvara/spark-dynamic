@@ -17,7 +17,8 @@ abstract class RepartitioningTrackerMaster[
   TaskContext <: TaskContextInterface[TaskMetrics],
   TaskMetrics <: TaskMetricsInterface[TaskMetrics],
   Operator]()(
-  implicit ev1: ScannerFactory[Scanner[TaskContext, TaskMetrics]])
+  implicit ev1: ScannerFactory[Scanner[TaskContext, TaskMetrics]],
+  ev2: StrategyFactory[Strategy])
 extends RepartitioningTracker[ComponentReference] {
   type RTW = RepartitioningTrackerWorker[
     ComponentReference,
@@ -151,7 +152,7 @@ extends RepartitioningTracker[ComponentReference] {
         )
         _stageData.update(stageID,
           MasterStageData(stageID,
-            new Strategy(stageID, attemptID, totalSlots.intValue()),
+            implicitly[StrategyFactory[Strategy]].apply(stageID, attemptID, totalSlots.intValue()),
             repartitioningMode,
             scanStrategy))
         logInfo(s"Sending repartitioning scan-strategy to each worker for " +

@@ -8,6 +8,7 @@ import org.apache.spark.scheduler._
 import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.dstream.{DStream, ShuffledDStream, Stream}
 import org.apache.spark.streaming.repartitioning.core.{MasterStreamData, StreamingRepartitioningTrackerMasterHelper}
+import org.apache.spark.repartitioning.NaivBatchStrategy._
 
 import scala.collection.mutable
 
