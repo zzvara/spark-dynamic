@@ -15,9 +15,9 @@ import org.apache.spark.{Partitioner, SparkContext, SparkEnv}
 abstract class Strategy(
   stageID: Int,
   attemptID: Int,
-  var numPartitions: Int)
-extends Decider(stageID) {
-
+  var numPartitions: Int,
+  resourceStateHandler: Option[() => Int] = None)
+extends Decider(stageID, resourceStateHandler) {
   /**
     * Called by the RepartitioningTrackerMaster if new histogram arrives
     * for this particular job's strategy.

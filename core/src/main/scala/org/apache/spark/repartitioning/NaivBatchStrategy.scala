@@ -6,7 +6,9 @@ import org.apache.spark.{Partitioner, SparkContext, SparkEnv}
 class NaivBatchStrategy(
   stageID: Int,
   attemptID: Int,
-  numPartitions: Int) extends Strategy(stageID, attemptID, numPartitions) {
+  numPartitions: Int,
+  resourceStateHandler: Option[() => Int] = None)
+extends Strategy(stageID, attemptID, numPartitions, resourceStateHandler) {
 
   override def getTrackerMaster: core.RepartitioningTrackerMaster[_, _, _, _, _] =
     SparkEnv.get.repartitioningTracker.asInstanceOf[core.RepartitioningTrackerMaster[_, _, _, _, _]]
@@ -25,8 +27,9 @@ class NaivBatchStrategy(
 
 object NaivBatchStrategy {
   implicit object NaivBatchStrategyFactory extends StrategyFactory[Strategy] {
-    override def apply(stageID: Int, attemptID: Int, numPartitions: Int): NaivBatchStrategy = {
-      new NaivBatchStrategy(stageID, attemptID, numPartitions)
+    override def apply(stageID: Int, attemptID: Int, numPartitions: Int,
+                       resourceStateHandler: Option[() => Int] = None): NaivBatchStrategy = {
+      new NaivBatchStrategy(stageID, attemptID, numPartitions, resourceStateHandler)
     }
   }
 }

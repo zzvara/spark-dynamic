@@ -152,7 +152,8 @@ extends RepartitioningTracker[ComponentReference] {
         )
         _stageData.update(stageID,
           MasterStageData(stageID,
-            implicitly[StrategyFactory[Strategy]].apply(stageID, attemptID, totalSlots.intValue()),
+            implicitly[StrategyFactory[Strategy]].apply(
+              stageID,attemptID, totalSlots.intValue(), Some(() => getTotalSlots)),
             repartitioningMode,
             scanStrategy))
         logInfo(s"Sending repartitioning scan-strategy to each worker for " +
