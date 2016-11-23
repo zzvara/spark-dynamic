@@ -3,22 +3,24 @@ package org.apache.spark.examples
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
+import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.{SparkConf, SparkContext}
 
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.{ArrayBuffer, Queue}
 
 object ChaosMonkey extends Logging {
   type Options = Map[Symbol, Any]
 
   val configuration = new SparkConf().setAppName("Chaos Monkey")
   final val spark = new SparkContext(configuration)
+  final val streaming = new StreamingContext(spark, Seconds(2))
   val incubator = ArrayBuffer[RDD[(Int, Double)]]()
   var options: Options = _
 
   def main(arguments: Array[String]): Unit = {
     options = parseArguments(arguments)
 
-    options('numberOfBananas).toString.split(",").foreach(spark.addJar)
+    options('jars).toString.split(",").foreach(spark.addJar)
 
     val numberOfBananas = options('numberOfBananas).toString.toInt
     val chanceOfNewBreed = options('chanceOfNewBreed).toString.toDouble
@@ -34,6 +36,23 @@ object ChaosMonkey extends Logging {
     logInfo("Going to create at least one new breed.")
     incubator += newBreed(10000,
       getPartitions(maximumNumberOfPartitions, minimumNumberOfPartitions))
+
+    val rddQueue = new Queue[RDD[Int]]()
+
+    streaming
+      .queueStream(rddQueue)
+      .map(x => (x % 10, 1))
+      .reduceByKey(_ + _)
+      .print()
+
+    streaming.start()
+
+    for (i <- 1 to 30) {
+      rddQueue.synchronized {
+        rddQueue += spark.makeRDD(1 to 1000, 10)
+      }
+      Thread.sleep(1000)
+    }
 
     (0 until numberOfBananas).foreach { banana =>
       scala.math.random match {
