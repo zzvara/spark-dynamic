@@ -20,11 +20,7 @@ package org.apache.spark.executor
 import org.apache.spark.Partitioner
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.ColorfulLogging
-import org.apache.spark.repartitioning.core.TaskMetricsInterface
 import org.apache.spark.util.{DataCharacteristicsAccumulator, LongAccumulator}
-
-import scala.collection.mutable
-
 
 /**
  * :: DeveloperApi ::
@@ -70,7 +66,6 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   private[spark] def finishRepartitioning(flag: Boolean = true) {
     if (flag) {
       _repartitioningIsFinished = true
-      // logInfo(s"Repartitioning finished for stage ${stageID.get}.", "DRRepartitioning")
     }
   }
 
@@ -129,33 +124,4 @@ class ShuffleWriteMetrics private[spark] () extends Serializable {
   def shuffleWriteTime: Long = writeTime
   @deprecated("use recordsWritten instead", "2.0.0")
   def shuffleRecordsWritten: Long = recordsWritten
-}
-
-class RepartitioningInfo[TaskMetrics <: TaskMetricsInterface[TaskMetrics]](
-  val stageID: Int,
-  val taskID: Long,
-  val executorName: String,
-  val taskMetrics: TaskMetrics,
-  var repartitioner: Option[Partitioner] = None,
-  var version: Option[Int] = Some(0)) extends Serializable with ColorfulLogging {
-
-  var trackingFinished = false
-
-  logInfo(s"Created RepartitioningInfo for stage:$stageID-task:$taskID.\n\tRepartitioner: $repartitioner, version: $version.", "yellow")
-
-  def updateRepartitioner(repartitioner: Partitioner, version: Int): Unit = {
-    this.repartitioner = Some(repartitioner)
-    this.version = Some(version)
-    logInfo(s"Updated repartitioner for stage:$stageID-task:$taskID.\n\tNew repartitioner: $repartitioner, new version: $version.", "yellow")
-  }
-
-  def getHistogramMeta: DataCharacteristicsAccumulator = {
-    taskMetrics.writeCharacteristics
-  }
-
-  def finishTracking(): Unit = {
-    trackingFinished = true
-    logInfo(s"Finished tracking of stage: $stageID, task:$taskID." +
-            s"\n\tRepartitioner: $repartitioner, version: $version.", "yellow")
-  }
 }

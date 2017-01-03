@@ -1,5 +1,7 @@
 package org.apache.spark.examples.repartitioning
 
+import hu.sztaki.drc.partitioner
+import hu.sztaki.drc.partitioner.PartitioningInfo
 import org.apache.spark._
 import org.apache.spark.streaming.{Seconds, StreamingContext, Time}
 import org.apache.spark.streaming.dstream.Stream
@@ -32,7 +34,8 @@ object PartitionerUpdateTest {
       var latestPartitioner: Partitioner = new HashPartitioner(numPartitions)
 
       override protected def getNewPartitioner(partitioningInfo: PartitioningInfo): Partitioner = {
-        latestPartitioner = super.getNewPartitioner(partitioningInfo)
+        latestPartitioner =
+          super.getNewPartitioner(partitioningInfo).asInstanceOf[Partitioner]
         latestPartitioner
       }
 

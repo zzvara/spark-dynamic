@@ -1,19 +1,21 @@
 package org.apache.spark.streaming.repartitioning
 
+import hu.sztaki.drc
+import hu.sztaki.drc.component.{StreamState, StreamingRepartitioningTrackerMasterHelper}
+import hu.sztaki.drc.messages.ScanStrategies
 import org.apache.spark.repartitioning.RepartitioningTrackerMaster
-import org.apache.spark.repartitioning.core.messaging.ScanStrategies
 import org.apache.spark.{SparkConf, SparkEnv, SparkException}
 import org.apache.spark.rpc.{RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler._
 import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.dstream.{DStream, ShuffledDStream, Stream}
-import org.apache.spark.streaming.repartitioning.core.{MasterStreamData, StreamingRepartitioningTrackerMasterHelper}
 import org.apache.spark.repartitioning.NaivBatchStrategy._
 
 import scala.collection.mutable
 
 class StreamingRepartitioningTrackerMaster(override val rpcEnv: RpcEnv, conf: SparkConf)
-extends RepartitioningTrackerMaster(rpcEnv, conf) with StreamingRepartitioningTrackerMasterHelper {
+extends RepartitioningTrackerMaster(rpcEnv, conf)
+with StreamingRepartitioningTrackerMasterHelper[Stream] {
   class StreamingListener extends Listener {
     /**
       * The case when the task was actually a reoccurring part of a stream
@@ -151,12 +153,12 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) with StreamingRepartitioningTr
               "spark.repartitioning.streaming.per-batch-sampling-rate", 5))
 
           _streamData.update(streamID,
-            MasterStreamData(streamID, mutable.Set[Int](jobStart.jobId), parentStreams, scanStrategy))
+            StreamState(streamID, mutable.Set[Int](jobStart.jobId), parentStreams, scanStrategy))
           _jobData.update(jobStart.jobId,
             MasterJobData(jobStart.jobId, stream))
 
           workers.values.foreach(
-            _.reference.send(StreamingScanStrategy(streamID, scanStrategy, parentStreams)))
+            _.reference.send(drc.StreamingScanStrategy(streamID, scanStrategy, parentStreams)))
         } else {
           _streamData.update(streamID, {
             _streamData(streamID).addJob(jobStart.jobId)
@@ -195,7 +197,7 @@ extends RepartitioningTrackerMaster(rpcEnv, conf) with StreamingRepartitioningTr
     workerReference.send(ScanStrategies(
       _stageData.map(_._2.scanStrategy).toList ++
         _streamData.map {
-          streamData => StreamingScanStrategy(
+          streamData => drc.StreamingScanStrategy(
             streamData._2.streamID, streamData._2.scanStrategy, streamData._2.parentDStreams)
         }
     ))

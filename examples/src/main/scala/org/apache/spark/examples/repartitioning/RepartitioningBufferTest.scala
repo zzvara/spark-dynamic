@@ -19,7 +19,7 @@ package org.apache.spark.examples.repartitioning
 
 import java.util.Comparator
 
-import org.apache.spark.{HashPartitioner, Repartitioner}
+import org.apache.spark.HashPartitioner
 import org.apache.spark.util.collection.RepartitioningBuffer
 
 // TODO: turn this class into a JUnit test
@@ -46,7 +46,7 @@ object RepartitioningBufferTest {
     //
     //      override def getPartition(key: Any): Int = key.asInstanceOf[String].charAt(0).hashCode() % 2
     //    }
-
+/*
     val newPartitioner = new Repartitioner(new HashPartitioner(2)) {
       override def numPartitions: Int = 2
 
@@ -62,7 +62,6 @@ object RepartitioningBufferTest {
     //    println(newPartitioner.getPartition(record1._1))
     //    println(newPartitioner.getPartition(record6._1))
     //    println(newPartitioner.getPartition(record11._1))
-
     val rpBuffer = new RepartitioningBuffer[String, String](newPartitioner)
 
     val partitionIterator0 = Iterator[(String, String)](record1, record2, record3, record4, record5, record6, record7, record8)
@@ -89,6 +88,7 @@ object RepartitioningBufferTest {
       }
       println(x + ", ")
     })
+*/
   }
 
 }

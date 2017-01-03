@@ -21,6 +21,10 @@ libraryDependencies += "org.ow2.asm"  % "asm" % "5.0.3"
 
 libraryDependencies += "org.ow2.asm"  % "asm-commons" % "5.0.3"
 
+libraryDependencies += "hu.sztaki"  % "dynamic-repartitioning-core_2.12" % "0.1-SNAPSHOT"
+
+resolvers += Resolver.defaultLocal
+
 addSbtPlugin("com.simplytyped" % "sbt-antlr4" % "0.7.11")
 
 // Spark uses a custom fork of the sbt-pom-reader plugin which contains a patch to fix issues

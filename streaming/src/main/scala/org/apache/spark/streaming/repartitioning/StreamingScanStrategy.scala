@@ -1,6 +1,6 @@
 package org.apache.spark.streaming.repartitioning
 
-import org.apache.spark.repartitioning.core.messaging.ScanStrategy
+import hu.sztaki.drc.messages.ScanStrategy
 import org.apache.spark.streaming.repartitioning.decider.StreamingDecider
 
 /**

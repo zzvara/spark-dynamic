@@ -19,19 +19,19 @@ package org.apache.spark.executor
 
 import java.util
 
-import org.apache.spark.InternalAccumulator.{input => _, _}
+import hu.sztaki.drc.Metrics
+import hu.sztaki.drc.partitioner.RepartitioningInfo
+import org.apache.spark.InternalAccumulator.{input => _}
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.Logging
-import org.apache.spark.repartitioning.core.TaskMetricsInterface
 import org.apache.spark.scheduler.AccumulableInfo
 import org.apache.spark.status.api.v1.BlockFetchInfo
 import org.apache.spark.storage.{BlockId, BlockResult, BlockStatus}
 import org.apache.spark.util._
 
-import scala.collection.mutable.{ArrayBuffer, LinkedHashMap}
-import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
+import scala.collection.mutable.{ArrayBuffer, LinkedHashMap}
 
 /**
  * :: DeveloperApi ::
@@ -47,7 +47,7 @@ import scala.collection.JavaConverters._
  * be sent to the driver.
  */
 @DeveloperApi
-class TaskMetrics extends TaskMetricsInterface[TaskMetrics]
+class TaskMetrics extends Metrics[TaskMetrics]
 with Serializable with Logging {
   // Each metric is internally represented as an accumulator
   private val _executorDeserializeTime = new LongAccumulator

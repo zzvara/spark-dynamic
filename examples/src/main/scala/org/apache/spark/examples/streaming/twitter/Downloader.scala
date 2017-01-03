@@ -23,7 +23,7 @@ object Downloader extends Logging {
 
     val configuration = new SparkConf()
       .setAppName("I'm downloading Twitter data from a remote Kafka, bro'. Chill.")
-      .setJars(options('jars).asInstanceOf[Seq[String]])
+      .setJars(options.get('jars).map(_.asInstanceOf[Seq[String]]).getOrElse(Seq()))
     val context = new SparkContext(configuration)
 
     val kafkaGroupPostfix = System.currentTimeMillis().toString

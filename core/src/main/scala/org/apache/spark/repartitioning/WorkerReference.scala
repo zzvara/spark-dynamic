@@ -5,4 +5,4 @@ import org.apache.spark.rpc.RpcEndpointRef
 class WorkerReference(
   executorID: String,
   reference: RpcEndpointRef)
-extends core.WorkerReference[RpcEndpointRef](executorID, reference) { }
+extends hu.sztaki.drc.WorkerReference[RpcEndpointRef](executorID, reference)

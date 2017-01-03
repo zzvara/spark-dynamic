@@ -2,6 +2,7 @@
 package org.apache.spark.examples
 
 import org.apache.spark.internal.Logging
+import org.apache.spark.launcher.SparkLauncher
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.{SparkConf, SparkContext}

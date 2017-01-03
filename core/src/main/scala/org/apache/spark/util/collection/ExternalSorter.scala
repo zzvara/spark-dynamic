@@ -187,7 +187,7 @@ private[spark] class ExternalSorter[K, V : ClassTag, C](
   private var isRepartitioning = false
 
   private def getRepartitioner: Option[Partitioner] = repartitioningInfo match {
-    case Some(ri) => ri.repartitioner
+    case Some(ri) => ri.repartitioner.asInstanceOf[Option[Partitioner]]
     case None => None
   }
 

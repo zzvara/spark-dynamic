@@ -20,11 +20,11 @@ package org.apache.spark
 import java.io.Serializable
 import java.util.Properties
 
+import hu.sztaki.drc.Context
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.metrics.source.Source
-import org.apache.spark.repartitioning.core.TaskContextInterface
 import org.apache.spark.util.{AccumulatorV2, TaskCompletionListener, TaskFailureListener}
 
 
@@ -78,7 +78,7 @@ object TaskContext {
  *   org.apache.spark.TaskContext.get()
  * }}}
  */
-abstract class TaskContext extends TaskContextInterface[TaskMetrics] with Serializable {
+abstract class TaskContext extends Context[TaskMetrics] with Serializable {
   private var _isDataAware = true
 
   def setDataAwareness(isDataAware: Boolean): Unit = {

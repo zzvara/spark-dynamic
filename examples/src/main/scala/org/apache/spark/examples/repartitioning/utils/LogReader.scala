@@ -2,8 +2,8 @@ package org.apache.spark.examples.repartitioning.utils
 
 import java.util.{Base64, Date}
 
+import hu.sztaki.drc.partitioner.PartitioningInfo
 import org.apache.commons.lang3.SerializationUtils
-import org.apache.spark.PartitioningInfo
 import org.apache.spark.internal.Logging
 
 import scala.collection.mutable.ListBuffer

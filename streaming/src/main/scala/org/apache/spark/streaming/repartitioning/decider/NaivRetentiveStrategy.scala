@@ -1,10 +1,11 @@
 package org.apache.spark.streaming.repartitioning.decider
 
+import hu.sztaki.drc.{Sampler, partitioner}
+import hu.sztaki.drc.partitioner.PartitioningInfo
 import org.apache.commons.collections4.queue.CircularFifoQueue
 import org.apache.spark.streaming.dstream.{ShuffledDStream, Stream}
 import org.apache.spark.streaming.repartitioning.StreamingUtils
-import org.apache.spark.util.DataCharacteristicsAccumulator
-import org.apache.spark.{Partitioner, PartitioningInfo, SparkEnv, SparkException}
+import org.apache.spark.{Partitioner, SparkEnv, SparkException}
 
 import scala.collection.mutable
 
@@ -44,15 +45,13 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
     */
   override def onHistogramArrival(
       partitionID: Int,
-      keyHistogram: DataCharacteristicsAccumulator): Unit = this.synchronized {
-    logInfo(s"Recording histogram arrival for partition $partitionID.",
-      "DRCommunication", "DRHistogram")
+      keyHistogram: Sampler): Unit = this.synchronized {
+    logInfo(s"Recording histogram arrival for partition $partitionID.")
     histograms.update(partitionID, keyHistogram)
   }
 
   def onPartitionMetricsArrival(partitionID: Int, recordsRead: Long): Unit = this.synchronized {
-    logInfo(s"Recording metrics for partition $partitionID.",
-      "DRCommunication", "DRHistogram")
+    logInfo(s"Recording metrics for partition $partitionID.")
     partitionHistogram.update(partitionID, recordsRead)
   }
 
@@ -81,7 +80,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
           *       deciders.
           */
         retentiveKeyHistogram = Some(
-          DataCharacteristicsAccumulator.weightedMerge(0.0d, retentiveKeyHistogramWeight)(
+          Sampler.weightedMerge(0.0d, retentiveKeyHistogramWeight)(
             histogram.toMap, globalHistogram
           ).sortBy(-_._2).take(totalSlots)
         )
@@ -92,8 +91,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
       retentiveKeyHistogram.get.take(10)
         .foldLeft(
           s"Retentive histogram's top 10 is:\n"
-        )((x, y) => x + s"\t ${y._1} \t -> \t ${y._2} \n"),
-      "DRHistogram"
+        )((x, y) => x + s"\t ${y._1} \t -> \t ${y._2} \n")
     )
     logObject(("retentiveHistogram", streamID, retentiveKeyHistogram.get))
     retentiveKeyHistogram.get
@@ -149,8 +147,8 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
     */
   override protected def preDecide(): Boolean = {
     logInfo(s"Deciding if need any repartitioning now for stream " +
-            s"with ID $streamID.", "DRRepartitioner")
-    logInfo(s"Number of received histograms: ${histograms.size}", "DRHistogram")
+            s"with ID $streamID.")
+    logInfo(s"Number of received histograms: ${histograms.size}")
     if (histograms.size < SparkEnv.get.conf.getInt("spark.repartitioning.histogram-threshold", 2)) {
       logWarning("Histogram threshold is not met.")
       return false
@@ -208,7 +206,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
     * only DStream that has a partitioner! Partitioner is used for the underlying
     * RDD. Partitioner should be changed!)
     */
-  override protected def resetPartitioners(newPartitioner: Partitioner): Unit = {
+  override protected def resetPartitioners(newPartitioner: partitioner.Partitioner): Unit = {
     StreamingUtils.getChildren(streamID) match {
       case head :: tail =>
         head match {
@@ -216,7 +214,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
             logInfo(s"Resetting partitioner for DStream with ID $streamID to partitioner " +
                     s" ${newPartitioner.toString}.")
             logObject(("partitionerReset", streamID, newPartitioner))
-            shuffledDStream.partitioner = newPartitioner
+            shuffledDStream.partitioner = newPartitioner.asInstanceOf[Partitioner]
             partitionerHistory :+ newPartitioner
           case _ =>
             throw new SparkException("Not a ShuffledDStream! Sorry.")

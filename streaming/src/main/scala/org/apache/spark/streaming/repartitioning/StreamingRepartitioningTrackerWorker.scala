@@ -1,18 +1,20 @@
 package org.apache.spark.streaming.repartitioning
 
-import org.apache.spark.SparkConf
+import hu.sztaki.drc.component.StreamingRepartitioningTrackerWorkerHelper
+import org.apache.spark.{SparkConf, TaskContext}
+import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.rdd.RDD
 import org.apache.spark.repartitioning.RepartitioningTrackerWorker
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.streaming.dstream.Stream
-import org.apache.spark.streaming.repartitioning.core.StreamingRepartitioningTrackerWorkerHelper
+import org.apache.spark.streaming.repartitioning.decider.StreamingDecider
 
 private[spark] class StreamingRepartitioningTrackerWorker(
   override val rpcEnv: RpcEnv,
   conf: SparkConf,
   executorId: String)
 extends RepartitioningTrackerWorker(rpcEnv, conf, executorId)
-with StreamingRepartitioningTrackerWorkerHelper {
+with StreamingRepartitioningTrackerWorkerHelper[TaskContext, TaskMetrics] {
 
   override def componentReceive: PartialFunction[Any, Unit] = {
     privateReceive orElse super.componentReceive
@@ -25,7 +27,7 @@ with StreamingRepartitioningTrackerWorkerHelper {
       val streamProperty = rdd.getProperties("stream").asInstanceOf[Stream]
       streamData.find(_._2.parentStreams.contains(streamProperty.ID)).map(_._2) match {
         case Some(data) =>
-          val remaining = (streamProperty.time - data.strategy.zeroTime).milliseconds %
+          val remaining = (streamProperty.time - data.strategy.asInstanceOf[StreamingDecider].zeroTime).milliseconds %
             (streamProperty.batchDuration.milliseconds * data.strategy.perBatchSamplingRate)
           val isDataAwareForTime = remaining == 0
           if (isDataAwareForTime) {

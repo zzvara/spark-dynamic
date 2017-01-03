@@ -17,11 +17,12 @@
 
 package org.apache.spark.rpc
 
+import hu.sztaki.drc.utilities.Messageable
+
 import scala.concurrent.Future
 import scala.reflect.ClassTag
 import org.apache.spark.{SparkConf, SparkException}
 import org.apache.spark.internal.Logging
-import org.apache.spark.repartitioning.core.Messageable
 import org.apache.spark.util.RpcUtils
 
 /**

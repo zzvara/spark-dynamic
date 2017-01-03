@@ -19,11 +19,12 @@ package org.apache.spark
 
 import java.io.{IOException, ObjectInputStream, ObjectOutputStream}
 
+import hu.sztaki.drc.partitioner
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 import scala.util.hashing.byteswap32
-
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
 import org.apache.spark.serializer.JavaSerializer
 import org.apache.spark.util.{CollectionsUtils, Utils}
@@ -33,9 +34,12 @@ import org.apache.spark.util.random.SamplingUtils
  * An object that defines how the elements in a key-value pair RDD are partitioned by key.
  * Maps each key to a partition ID, from 0 to `numPartitions - 1`.
  */
-abstract class Partitioner extends Serializable {
+abstract class Partitioner extends partitioner.Partitioner with Serializable {
   def numPartitions: Int
   def getPartition(key: Any): Int
+
+  override def size = numPartitions
+  override def get(key: Any) = getPartition(key)
 }
 
 object Partitioner {

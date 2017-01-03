@@ -1,9 +1,10 @@
 package org.apache.spark.repartitioning
 
+import hu.sztaki.drc
+import hu.sztaki.drc._
 import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.rdd.RDD
-import org.apache.spark.repartitioning.core._
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler._
 
@@ -15,8 +16,8 @@ import org.apache.spark.scheduler._
   */
 private[spark] class RepartitioningTrackerMaster(
   val rpcEnv: RpcEnv,
-  conf: SparkConf)(implicit ev1: ScannerFactory[Throughput], ev2: StrategyFactory[Strategy])
-extends core.RepartitioningTrackerMaster[
+  conf: SparkConf)(implicit ev1: ScannerFactory[Throughput], ev2: StrategyFactory[DeciderStrategy])
+extends hu.sztaki.drc.component.RepartitioningTrackerMaster[
   RpcEndpointRef, RpcCallContext, TaskContext, TaskMetrics, RDD[_]]()(ev1, ev2)
 with RpcEndpoint {
   class Listener extends SparkListener {
@@ -46,7 +47,7 @@ with RpcEndpoint {
         stageInfo.stageId,
         stageInfo.attemptId,
         if (stageInfo.isInstanceOf[ResultStageInfo] || stageInfo.partitioner.isEmpty) {
-          RepartitioningModes.OFF
+          Mode.OFF
         } else {
           configuredRPMode
         })
@@ -91,7 +92,7 @@ with RpcEndpoint {
     componentReceiveAndReply(context)
   }
 
-  override def scannerFactory(): ScannerFactory[core.Throughput[TaskContext, TaskMetrics]] = {
+  override def scannerFactory(): ScannerFactory[drc.Throughput[TaskContext, TaskMetrics]] = {
     implicitly[ScannerFactory[Throughput]]
   }
 }

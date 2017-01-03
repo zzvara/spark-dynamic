@@ -23,6 +23,7 @@ import java.net.Socket
 import scala.collection.mutable
 import scala.util.Properties
 import com.google.common.collect.MapMaker
+import hu.sztaki.drc.component.RepartitioningTracker
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.api.python.PythonWorkerFactory
 import org.apache.spark.broadcast.BroadcastManager
@@ -30,7 +31,6 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.memory.{MemoryManager, StaticMemoryManager, UnifiedMemoryManager}
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.network.netty.NettyBlockTransferService
-import org.apache.spark.repartitioning.core.{Messageable, RepartitioningTracker}
 import org.apache.spark.repartitioning.{RepartitioningTrackerFactory, RepartitioningTrackerMaster, RepartitioningTrackerWorker}
 import org.apache.spark.rpc.{RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler.{LiveListenerBus, OutputCommitCoordinator}
