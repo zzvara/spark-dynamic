@@ -8,7 +8,8 @@ abstract class StreamingDecider(
   stream: Stream,
   override val perBatchSamplingRate: Int = 1,
   resourceStateHandler: Option[() => Int] = None)
-extends hu.sztaki.drc.StreamingDecider(streamID, resourceStateHandler) {
+extends hu.sztaki.drc.StreamingDecider[Stream](
+  streamID, stream, perBatchSamplingRate, resourceStateHandler) {
   def zeroTime: Time = stream.time
   def onPartitionMetricsArrival(partitionID: Int, recordsRead: Long): Unit
 }

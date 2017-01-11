@@ -1,7 +1,7 @@
 package org.apache.spark.repartitioning
 
 import hu.sztaki.drc.{DeciderStrategy, StrategyFactory, partitioner}
-import org.apache.spark.{Partitioner, SparkContext, SparkEnv}
+import org.apache.spark.{SparkContext, SparkEnv}
 
 class NaivBatchStrategy(
   stageID: Int,

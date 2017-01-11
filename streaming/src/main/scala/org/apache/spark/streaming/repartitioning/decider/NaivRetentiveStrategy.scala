@@ -230,14 +230,12 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
   }
 }
 
-/**
-  * Factory for NaivRetentiveStrategy.
-  */
-object NaivRetentiveStrategyFactory extends StreamingDeciderFactory {
+object NaivRetentiveStrategyFactory
+extends hu.sztaki.drc.utilities.Factory.forStreamingDecider[Stream] {
   override def apply(streamID: Int,
                      stream: Stream,
-                     perBatchSamplingRate: Int,
-                     resourceStateHandler: Option[() => Int]): StreamingDecider = {
+                     perBatchSamplingRate: Int = 1,
+                     resourceStateHandler: Option[() => Int]): hu.sztaki.drc.StreamingDecider[Stream] = {
     new NaivRetentiveStrategy(streamID, stream, perBatchSamplingRate, resourceStateHandler)
   }
 }

@@ -21,7 +21,7 @@ libraryDependencies += "org.ow2.asm"  % "asm" % "5.0.3"
 
 libraryDependencies += "org.ow2.asm"  % "asm-commons" % "5.0.3"
 
-libraryDependencies += "hu.sztaki"  % "dynamic-repartitioning-core_2.12" % "0.1-SNAPSHOT"
+libraryDependencies += "hu.sztaki"  % "dynamic-repartitioning-core_2.11" % "0.1-SNAPSHOT"
 
 resolvers += Resolver.defaultLocal
 

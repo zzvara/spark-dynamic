@@ -35,7 +35,7 @@
   <dependencies>
     <dependency>
       <groupId>hu.sztaki</groupId>
-      <artifactId>dynamic-repartitioning-core_2.12</artifactId>
+      <artifactId>dynamic-repartitioning-core_2.11</artifactId>
       <version>0.1-SNAPSHOT</version>
     </dependency>
     <dependency>
