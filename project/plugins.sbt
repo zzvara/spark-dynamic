@@ -17,11 +17,11 @@ addSbtPlugin("com.cavorite" % "sbt-avro" % "0.3.2")
 
 addSbtPlugin("io.spray" % "sbt-revolver" % "0.8.0")
 
-libraryDependencies += "org.ow2.asm"  % "asm" % "5.0.3"
+libraryDependencies += "org.ow2.asm" % "asm" % "5.0.3"
 
-libraryDependencies += "org.ow2.asm"  % "asm-commons" % "5.0.3"
+libraryDependencies += "org.ow2.asm" % "asm-commons" % "5.0.3"
 
-libraryDependencies += "hu.sztaki"  % "dynamic-repartitioning-core_2.11" % "0.1-SNAPSHOT"
+libraryDependencies += "hu.sztaki" % "dynamic-repartitioning-core_2.11" % "0.1.39-SNAPSHOT"
 
 resolvers += Resolver.defaultLocal
 

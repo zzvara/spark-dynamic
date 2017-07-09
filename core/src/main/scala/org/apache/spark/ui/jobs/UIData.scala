@@ -22,7 +22,7 @@ import scala.collection.mutable.HashMap
 import org.apache.spark.JobExecutionStatus
 import org.apache.spark.executor.{ShuffleReadMetrics, ShuffleWriteMetrics, TaskMetrics}
 import org.apache.spark.scheduler.{AccumulableInfo, TaskInfo}
-import org.apache.spark.status.api.v1.BlockFetchInfo
+import org.apache.spark.status.api.v1.{BlockFetchInfo, DataCharacteristics}
 import org.apache.spark.storage.{BlockId, BlockStatus}
 import org.apache.spark.util.{AccumulatorContext, DataCharacteristicsAccumulator}
 import org.apache.spark.util.collection.OpenHashSet
@@ -220,7 +220,7 @@ private[spark] object UIData {
       recordsRead: Long,
       totalBytesRead: Long,
       totalBlocksFetched: Long,
-      dataCharacteristics: Map[Any, Double])
+      dataCharacteristics: DataCharacteristics)
 
   object ShuffleReadMetricsUIData {
     def apply(metrics: ShuffleReadMetrics): ShuffleReadMetricsUIData = {
@@ -235,7 +235,10 @@ private[spark] object UIData {
         recordsRead = metrics.recordsRead,
         totalBytesRead = metrics.totalBytesRead,
         totalBlocksFetched = metrics.totalBlocksFetched,
-        dataCharacteristics = metrics.dataCharacteristics().value
+        dataCharacteristics = new DataCharacteristics(
+          metrics.dataCharacteristics().value,
+          metrics.dataCharacteristics().sampleRate
+        )
       )
     }
   }

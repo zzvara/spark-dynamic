@@ -23,7 +23,7 @@ import java.util.ArrayList
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
-import hu.sztaki.drc.Sampler
+import hu.sztaki.drc.{Conceptier, Naive, Sampling}
 import org.apache.spark.{InternalAccumulator, SparkContext, TaskContext}
 import org.apache.spark.scheduler.AccumulableInfo
 
@@ -484,12 +484,14 @@ private[spark] object DataCharacteristicsAccumulator {
 /**
   * @todo Fix.
   */
+/*
 class WeightableDataCharacteristicsAccumulator extends DataCharacteristicsAccumulator {
   override def increase(pair: Product2[Any, Any]): Double = 1.0
 }
+*/
 
 class DataCharacteristicsAccumulator
-extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Sampler {
+extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Conceptier {
   override def isZero: Boolean = isEmpty
 
   override def copy(): AccumulatorV2[(Any, Double), Map[Any, Double]] = {
@@ -503,8 +505,10 @@ extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Sampler {
   override def value: Map[Any, Double] = super.value
 
   override def merge(other: AccumulatorV2[(Any, Double), Map[Any, Double]]): Unit = {
-
+    mergeWith(other.asInstanceOf[Sampling])
   }
+
+  override protected var HISTOGRAM_HARD_BOUNDARY: Int = this.INITIAL_HARD_BOUNDARY
 }
 
 abstract class Weightable {

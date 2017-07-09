@@ -184,6 +184,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable with Logging {
     _localBytesRead.setValue(0)
     _fetchWaitTime.setValue(0)
     _recordsRead.setValue(0)
+    _dataCharacteristics.setValue(Map())
     metrics.foreach { metric =>
       _remoteBlocksFetched.add(metric.remoteBlocksFetched)
       _remoteBlockFetchInfos.add(metric.remoteBlockFetchInfos)
@@ -193,6 +194,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable with Logging {
       _localBytesRead.add(metric.localBytesRead)
       _fetchWaitTime.add(metric.fetchWaitTime)
       _recordsRead.add(metric.recordsRead)
+      _dataCharacteristics.merge(metric.dataCharacteristics)
     }
   }
 }
@@ -213,6 +215,7 @@ private[spark] class TempShuffleReadMetrics extends Logging {
   private[this] var _recordsRead = 0L
   private[this] var _dataCharacteristics = new DataCharacteristicsAccumulator
 
+  def dataCharacteristics = _dataCharacteristics
 
   def incRemoteBlocksFetched(v: Long): Unit = _remoteBlocksFetched += v
   def addRemoteBlockFetchInfo(v: BlockFetchInfo): Unit = _remoteBlockFetchInfos.add(v)

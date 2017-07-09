@@ -1,6 +1,7 @@
+
 package org.apache.spark.streaming.repartitioning.decider
 
-import hu.sztaki.drc.{Sampler, partitioner}
+import hu.sztaki.drc.{Naive, Sampling, partitioner}
 import hu.sztaki.drc.partitioner.PartitioningInfo
 import org.apache.commons.collections4.queue.CircularFifoQueue
 import org.apache.spark.streaming.dstream.{ShuffledDStream, Stream}
@@ -45,7 +46,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
     */
   override def onHistogramArrival(
       partitionID: Int,
-      keyHistogram: Sampler): Unit = this.synchronized {
+      keyHistogram: Sampling): Unit = this.synchronized {
     logInfo(s"Recording histogram arrival for partition $partitionID.")
     histograms.update(partitionID, keyHistogram)
   }
@@ -80,7 +81,7 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
           *       deciders.
           */
         retentiveKeyHistogram = Some(
-          Sampler.weightedMerge(0.0d, retentiveKeyHistogramWeight)(
+          Naive.weightedMerge(0.0d, retentiveKeyHistogramWeight)(
             histogram.toMap, globalHistogram
           ).sortBy(-_._2).take(totalSlots)
         )

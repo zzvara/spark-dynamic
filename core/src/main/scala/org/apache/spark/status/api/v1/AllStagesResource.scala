@@ -295,7 +295,10 @@ private[v1] object AllStagesResource {
       repartitioningTime = internal.repartitioningTime,
       insertionTime = internal.insertionTime,
       recordsWritten = internal.recordsWritten,
-      dataCharacteristics = internal.dataCharacteristics.value
+      dataCharacteristics = new DataCharacteristics(
+        internal.dataCharacteristics.value,
+        internal.dataCharacteristics.sampleRate
+      )
     )
   }
 }

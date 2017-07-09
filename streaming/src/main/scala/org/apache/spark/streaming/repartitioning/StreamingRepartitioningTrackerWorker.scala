@@ -1,3 +1,4 @@
+
 package org.apache.spark.streaming.repartitioning
 
 import hu.sztaki.drc.component.StreamingRepartitioningTrackerWorkerHelper
@@ -27,11 +28,12 @@ with StreamingRepartitioningTrackerWorkerHelper[TaskContext, TaskMetrics] {
       val streamProperty = rdd.getProperties("stream").asInstanceOf[Stream]
       streamData.find(_._2.parentStreams.contains(streamProperty.ID)).map(_._2) match {
         case Some(data) =>
-          val remaining = (streamProperty.time - data.strategy.asInstanceOf[StreamingDecider].zeroTime).milliseconds %
+          val remaining = (streamProperty.time -
+              data.strategy.asInstanceOf[StreamingDecider].zeroTime) %
             (streamProperty.batchDuration.milliseconds * data.strategy.perBatchSamplingRate)
           val isDataAwareForTime = remaining == 0
           if (isDataAwareForTime) {
-            logInfo(s"RDD is data-aware to time ${streamProperty.time.milliseconds} and stream " +
+            logInfo(s"RDD is data-aware to time ${streamProperty.time} and stream " +
               s"${streamProperty.ID}.")
           }
           isDataAwareForTime

@@ -2,7 +2,6 @@
 package org.apache.spark.examples
 
 import org.apache.spark.internal.Logging
-import org.apache.spark.launcher.SparkLauncher
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.{SparkConf, SparkContext}
@@ -40,19 +39,21 @@ object ChaosMonkey extends Logging {
 
     val rddQueue = new Queue[RDD[Int]]()
 
-    streaming
-      .queueStream(rddQueue)
-      .map(x => (x % 10, 1))
-      .reduceByKey(_ + _)
-      .print()
+    if (!options.get('noStreaming).contains("true")) {
+      streaming
+        .queueStream(rddQueue)
+        .map(x => (x % 10, 1))
+        .reduceByKey(_ + _)
+        .print()
 
-    streaming.start()
+      streaming.start()
 
-    for (i <- 1 to 30) {
-      rddQueue.synchronized {
-        rddQueue += spark.makeRDD(1 to 1000, 10)
+      for (i <- 1 to 30) {
+        rddQueue.synchronized {
+          rddQueue += spark.makeRDD(1 to 1000, 10)
+        }
+        Thread.sleep(1000)
       }
-      Thread.sleep(1000)
     }
 
     (0 until numberOfBananas).foreach { banana =>
@@ -147,6 +148,8 @@ object ChaosMonkey extends Logging {
           nextOption(map ++ Map('maximumNumberOfPartitions -> value), tail)
         case "--aggregateResurrectionSize" :: value :: tail =>
           nextOption(map ++ Map('aggregateResurrectionSize -> value), tail)
+        case "--noStreaming" :: value :: tail =>
+          nextOption(map ++ Map('noStreaming -> value), tail)
         case _ => map
       }
     }

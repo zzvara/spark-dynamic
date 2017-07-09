@@ -358,7 +358,7 @@ abstract class DStream[T: ClassTag] (
             logInfo(s"Marking RDD ${newRDD.id} for time $time for checkpointing")
           }
           generatedRDDs.put(time, newRDD)
-          newRDD.addProperty("stream", Stream(id, time, ssc.graph.batchDuration))
+          newRDD.addProperty("stream", Stream(id, time.milliseconds, ssc.graph.batchDuration))
         }
         rddOption
       } else {
@@ -982,4 +982,4 @@ object DStream {
   }
 }
 
-case class Stream(ID: Int, time: Time, batchDuration: Duration) extends Serializable
+case class Stream(ID: Int, time: Long, batchDuration: Duration) extends Serializable

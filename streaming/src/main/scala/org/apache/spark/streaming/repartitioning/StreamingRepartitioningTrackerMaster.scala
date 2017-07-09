@@ -1,3 +1,4 @@
+
 package org.apache.spark.streaming.repartitioning
 
 import hu.sztaki.drc
@@ -13,10 +14,11 @@ import org.apache.spark.repartitioning.NaivBatchStrategy._
 
 import scala.collection.mutable
 
-class StreamingRepartitioningTrackerMaster(override val rpcEnv: RpcEnv, conf: SparkConf)
+class StreamingRepartitioningTrackerMaster(
+  override val rpcEnv: RpcEnv, conf: SparkConf)
 extends RepartitioningTrackerMaster(rpcEnv, conf)
 with StreamingRepartitioningTrackerMasterHelper[Stream] {
-  class StreamingListener extends Listener {
+class StreamingListener extends Listener {
     /**
       * The case when the task was actually a reoccurring part of a stream
       * processing pipeline. If that so, the task's stage properties hold
@@ -64,7 +66,8 @@ with StreamingRepartitioningTrackerMasterHelper[Stream] {
                     s => updatePartitionMetrics(s, taskEnd.taskInfo.taskId,
                                                 taskEnd.taskInfo.index, recordsRead)
                   )
-                case None => throw new RuntimeException(s"Cannot find shuffle head for stream $stream")
+                case None =>
+                  throw new RuntimeException(s"Cannot find shuffle head for stream $stream")
               }
             }
           case None =>
@@ -134,7 +137,7 @@ with StreamingRepartitioningTrackerMasterHelper[Stream] {
       val streamProperties = jobStart.jobProperties.get("stream")
       if (streamProperties.isDefined) {
         val stream = streamProperties.get.asInstanceOf[Stream]
-        logInfo(s"Job detected as a mini-batch for DStream with ID ${stream.ID}.")
+        logInfo(s"Job ${jobStart.jobId} detected as a mini-batch for DStream with ID ${stream.ID}.")
         val streamID = stream.ID
 
         /**
@@ -172,18 +175,14 @@ with StreamingRepartitioningTrackerMasterHelper[Stream] {
     }
 
     override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {
-      this.synchronized {
-        if (!stageSubmitted.stageInfo.rddInfos.head.properties.contains("stream")) {
-          super.onStageSubmitted(stageSubmitted)
-        }
+      if (!stageSubmitted.stageInfo.rddInfos.head.properties.contains("stream")) {
+        super.onStageSubmitted(stageSubmitted)
       }
     }
 
     override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {
-      this.synchronized {
-        if (!stageCompleted.stageInfo.rddInfos.head.properties.contains("stream")) {
-          super.onStageCompleted(stageCompleted)
-        }
+      if (!stageCompleted.stageInfo.rddInfos.head.properties.contains("stream")) {
+        super.onStageCompleted(stageCompleted)
       }
     }
 

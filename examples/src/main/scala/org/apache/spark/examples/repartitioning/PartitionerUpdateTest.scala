@@ -1,3 +1,4 @@
+
 package org.apache.spark.examples.repartitioning
 
 import hu.sztaki.drc.partitioner
@@ -28,7 +29,7 @@ object PartitionerUpdateTest {
     val numMiniBatches = 6
     val miniBatches = Array.ofDim[(Int, String)](numMiniBatches, numPartitions, minibatchSize / numPartitions)
     val keyHistograms = Array.fill[DataCharacteristicsAccumulator](numMiniBatches, numPartitions)(new DataCharacteristicsAccumulator)
-    val stream = Stream(0, Time(15), Seconds(5))
+    val stream = Stream(0, 15l, Seconds(5))
 
     val strategy = new NaivRetentiveStrategy(0, stream, 1, Some(() => numPartitions)) {
       var latestPartitioner: Partitioner = new HashPartitioner(numPartitions)

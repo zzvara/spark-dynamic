@@ -21,8 +21,8 @@ import java.util.Date
 import org.apache.spark.storage.{BlockId, RDDInfo}
 
 import scala.collection.Map
-
 import org.apache.spark.JobExecutionStatus
+import org.apache.spark.util.DataCharacteristicsAccumulator
 
 class ApplicationInfo private[spark](
     val id: String,
@@ -194,6 +194,10 @@ class OutputMetrics private[spark](
     val bytesWritten: Long,
     val recordsWritten: Long)
 
+class DataCharacteristics private[spark](
+    val histogram: Map[Any, Double],
+    val scale: Double)
+
 class ShuffleReadMetrics private[spark](
     val remoteBlocksFetched: Long,
     val remoteBlockFetchInfos: Seq[BlockFetchInfo],
@@ -203,7 +207,7 @@ class ShuffleReadMetrics private[spark](
     val remoteBytesRead: Long,
     val localBytesRead: Long,
     val recordsRead: Long,
-    val dataCharacteristics: Map[Any, Double])
+    val dataCharacteristics: DataCharacteristics)
 
 class BlockFetchInfo private[spark](
     var blockId: BlockId,
@@ -218,7 +222,7 @@ class ShuffleWriteMetrics private[spark](
     val repartitioningTime: Long,
     val insertionTime: Long,
     val recordsWritten: Long,
-    val dataCharacteristics: Map[Any, Double])
+    val dataCharacteristics: DataCharacteristics)
 
 class TaskMetricDistributions private[spark](
     val quantiles: IndexedSeq[Double],
