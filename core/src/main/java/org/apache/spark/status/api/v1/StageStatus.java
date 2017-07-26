@@ -23,6 +23,7 @@ public enum StageStatus {
   ACTIVE,
   COMPLETE,
   FAILED,
+  SKIPPED,
   PENDING;
 
   public static StageStatus fromString(String str) {

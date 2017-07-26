@@ -132,7 +132,8 @@ private[v1] object AllStagesResource {
         StageStatus.ACTIVE -> listener.activeStages.values.toSeq,
         StageStatus.COMPLETE -> listener.completedStages.reverse.toSeq,
         StageStatus.FAILED -> listener.failedStages.reverse.toSeq,
-        StageStatus.PENDING -> listener.pendingStages.values.toSeq
+        StageStatus.PENDING -> listener.pendingStages.values.toSeq,
+        StageStatus.SKIPPED -> listener.skippedStages.reverse.toSeq
       )
     }
   }
