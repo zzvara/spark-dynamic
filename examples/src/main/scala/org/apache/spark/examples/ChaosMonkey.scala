@@ -29,6 +29,7 @@ object ChaosMonkey extends Logging {
     val chanceOfJoin = options('chanceOfJoin).toString.toDouble
     val chanceOfCoGroupFour = options('chanceOfCoGroupFour).toString.toDouble
     val chanceOfCoGroupThree = options('chanceOfCoGroupThree).toString.toDouble
+    val chanceOfCache = options('chanceOfCache).toString.toDouble
     val minimumNumberOfPartitions = options('minimumNumberOfPartitions).toString.toInt
     val maximumNumberOfPartitions = options('maximumNumberOfPartitions).toString.toInt
     val aggregateResurrectionSize = options('aggregateResurrectionSize).toString.toInt
@@ -93,6 +94,9 @@ object ChaosMonkey extends Logging {
             .flatMap {
               group => group._2._1.map { value => (group._1, value) }
             }
+        case x if x < chanceOfCache =>
+          logInfo("Going to cache someone.")
+          incubator += pickBreed().cache()
         case _ =>
           logInfo("Monkey bored. Doing nothing special.")
       }
@@ -142,6 +146,8 @@ object ChaosMonkey extends Logging {
           nextOption(map ++ Map('chanceOfCoGroupFour -> value), tail)
         case "--chanceOfCoGroupThree" :: value :: tail =>
           nextOption(map ++ Map('chanceOfCoGroupThree -> value), tail)
+        case "--chanceOfCache" :: value :: tail =>
+          nextOption(map ++ Map('chanceOfCache -> value), tail)
         case "--minimumNumberOfPartitions" :: value :: tail =>
           nextOption(map ++ Map('minimumNumberOfPartitions -> value), tail)
         case "--maximumNumberOfPartitions" :: value :: tail =>
