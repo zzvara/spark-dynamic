@@ -32,11 +32,11 @@ object PartitionerUpdateTest {
     val stream = Stream(0, 15l, Seconds(5))
 
     val strategy = new NaivRetentiveStrategy(0, stream, 1, Some(() => numPartitions)) {
-      var latestPartitioner: Partitioner = new HashPartitioner(numPartitions)
+      var latestPartitioner: partitioner.Partitioner = new partitioner.HashPartitioner(numPartitions)
 
-      override protected def getNewPartitioner(partitioningInfo: PartitioningInfo): Partitioner = {
+      override protected def getNewPartitioner(partitioningInfo: PartitioningInfo): partitioner.Partitioner = {
         latestPartitioner =
-          super.getNewPartitioner(partitioningInfo).asInstanceOf[Partitioner]
+          super.getNewPartitioner(partitioningInfo)
         latestPartitioner
       }
 
@@ -112,7 +112,7 @@ object PartitionerUpdateTest {
       val partitioner = strategy.latestPartitioner
       val partitionHistogram = scala.collection.mutable.HashMap[Int, Long]()
       miniBatch.foreach(_.foreach(r => {
-        val key = partitioner.getPartition(r._1)
+        val key = partitioner.get(r._1)
         partitionHistogram.get(key) match {
           case Some(value) => partitionHistogram.update(key, value + 1L)
           case None => partitionHistogram.update(key, 1L)

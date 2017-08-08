@@ -6,7 +6,7 @@ import hu.sztaki.drc.partitioner.PartitioningInfo
 import org.apache.commons.collections4.queue.CircularFifoQueue
 import org.apache.spark.streaming.dstream.{ShuffledDStream, Stream}
 import org.apache.spark.streaming.repartitioning.StreamingUtils
-import org.apache.spark.{Partitioner, SparkEnv, SparkException}
+import org.apache.spark.{Partitioner, PartitionerWrapper, SparkEnv, SparkException}
 
 import scala.collection.mutable
 
@@ -215,8 +215,8 @@ extends StreamingDecider(streamID, stream, perBatchSamplingRate, resourceStateHa
             logInfo(s"Resetting partitioner for DStream with ID $streamID to partitioner " +
                     s" ${newPartitioner.toString}.")
             logObject(("partitionerReset", streamID, newPartitioner))
-            shuffledDStream.partitioner = newPartitioner.asInstanceOf[Partitioner]
-            partitionerHistory :+ newPartitioner
+            shuffledDStream.partitioner = new PartitionerWrapper(newPartitioner)
+            partitionerHistory :+ shuffledDStream.partitioner
           case _ =>
             throw new SparkException("Not a ShuffledDStream! Sorry.")
         }

@@ -36,7 +36,7 @@
     <dependency>
       <groupId>hu.sztaki</groupId>
       <artifactId>dynamic-repartitioning-core_2.11</artifactId>
-      <version>0.1.39-SNAPSHOT</version>
+      <version>0.1.40-SNAPSHOT</version>
     </dependency>
     <dependency>
       <groupId>org.apache.avro</groupId>
