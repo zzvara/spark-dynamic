@@ -27,8 +27,8 @@ import scala.util.hashing.byteswap32
 
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
 import org.apache.spark.serializer.JavaSerializer
-import org.apache.spark.util.{CollectionsUtils, Utils}
 import org.apache.spark.util.random.SamplingUtils
+import org.apache.spark.util.{CollectionsUtils, Utils}
 
 /**
  * An object that defines how the elements in a key-value pair RDD are partitioned by key.
@@ -99,6 +99,26 @@ object Partitioner {
     val maxPartitions = rdds.map(_.partitions.length).max
     log10(maxPartitions) - log10(hasMaxPartitioner.getNumPartitions) < 1
   }
+}
+
+
+class PartitionerWrapper(val part: hu.sztaki.drc.partitioner.Partitioner) extends Partitioner {
+
+  override def numPartitions: Int = part.numPartitions
+
+  override def getPartition(key: Any): Int = part.getPartition(key)
+
+  override def toString: String = "PartitionerWrapper(" + part + ")"
+
+  override def equals(other: Any): Boolean = {
+    other match {
+      case w: PartitionerWrapper =>
+        part.id == w.part.id
+      case _ => false
+    }
+  }
+
+  override def hashCode: Int = part.id.hashCode
 }
 
 /**

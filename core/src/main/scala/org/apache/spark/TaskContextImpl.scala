@@ -175,4 +175,14 @@ private[spark] class TaskContextImpl(
   private[spark] override def fetchFailed: Option[FetchFailedException] = _fetchFailedException
 
   private[spark] override def getLocalProperties(): Properties = localProperties
+
+  override def partitionID(): Int = partitionId
+
+  def attemptId(): Int = taskAttemptId.toInt
+
+  def attemptID(): Int = attemptId()
+
+  override def stageID(): Int = stageId
+
+  override def metrics(): TaskMetrics = taskMetrics
 }

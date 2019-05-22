@@ -412,13 +412,13 @@ class EventLoggingListenerSuite extends SparkFunSuite with LocalSparkContext wit
   }
 
   private def createStageSubmittedEvent(stageId: Int) = {
-    SparkListenerStageSubmitted(new StageInfo(stageId, 0, stageId.toString, 0,
-      Seq.empty, Seq.empty, "details"))
+    SparkListenerStageSubmitted(new StageInfo(stageId, 0, 0, stageId.toString, 0,
+      None, Seq.empty, Seq.empty, "details"))
   }
 
   private def createStageCompletedEvent(stageId: Int) = {
-    SparkListenerStageCompleted(new StageInfo(stageId, 0, stageId.toString, 0,
-      Seq.empty, Seq.empty, "details"))
+    SparkListenerStageCompleted(new StageInfo(stageId, 0, 0, stageId.toString, 0,
+      None, Seq.empty, Seq.empty, "details"))
   }
 
   private def createExecutorAddedEvent(executorId: Int) = {
@@ -427,7 +427,7 @@ class EventLoggingListenerSuite extends SparkFunSuite with LocalSparkContext wit
   }
 
   private def createExecutorRemovedEvent(executorId: Int) = {
-    SparkListenerExecutorRemoved(0L, executorId.toString, "test")
+    SparkListenerExecutorRemoved(0L, executorId.toString, "test", null)
   }
 
   private def createExecutorMetricsUpdateEvent(

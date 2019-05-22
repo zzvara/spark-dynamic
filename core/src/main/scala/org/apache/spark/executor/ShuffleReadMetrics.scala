@@ -17,9 +17,10 @@
 
 package org.apache.spark.executor
 
+import org.apache.spark.SparkEnv
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.shuffle.ShuffleReadMetricsReporter
-import org.apache.spark.util.LongAccumulator
+import org.apache.spark.util.{DataCharacteristicsAccumulator, LongAccumulator}
 
 
 /**
@@ -36,6 +37,31 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
   private[executor] val _localBytesRead = new LongAccumulator
   private[executor] val _fetchWaitTime = new LongAccumulator
   private[executor] val _recordsRead = new LongAccumulator
+  private[executor] val _dataCharacteristics = new DataCharacteristicsAccumulator
+
+  val recordCharacteristics: Boolean =
+    SparkEnv.get.conf.getBoolean("spark.metrics.shuffleRead.dataCharacteristics", true)
+
+  def dataCharacteristics(): DataCharacteristicsAccumulator = _dataCharacteristics
+
+  private[spark] def setDataCharacteristics(s: Map[Any, Double]): Unit = {
+    _dataCharacteristics.setValue(s)
+  }
+
+  private[spark] def recordIterator(iter: Iterator[(_, _)]): Iterator[(_, _)] = {
+    if (recordCharacteristics) {
+      iter.map {
+        pair =>
+          _dataCharacteristics.add((pair._1, 1.0d))
+          pair
+      }
+    } else {
+      iter
+    }
+  }
+
+  // TODO: Fix
+  def compact(): Unit = {}
 
   /**
    * Number of remote blocks fetched in this shuffle by this task.
@@ -112,6 +138,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
     _localBytesRead.setValue(0)
     _fetchWaitTime.setValue(0)
     _recordsRead.setValue(0)
+    _dataCharacteristics.setValue(Map())
     metrics.foreach { metric =>
       _remoteBlocksFetched.add(metric.remoteBlocksFetched)
       _localBlocksFetched.add(metric.localBlocksFetched)
@@ -120,6 +147,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable {
       _localBytesRead.add(metric.localBytesRead)
       _fetchWaitTime.add(metric.fetchWaitTime)
       _recordsRead.add(metric.recordsRead)
+      _dataCharacteristics.merge(metric.dataCharacteristics)
     }
   }
 }
@@ -138,6 +166,9 @@ private[spark] class TempShuffleReadMetrics extends ShuffleReadMetricsReporter {
   private[this] var _localBytesRead = 0L
   private[this] var _fetchWaitTime = 0L
   private[this] var _recordsRead = 0L
+  private[this] var _dataCharacteristics = new DataCharacteristicsAccumulator
+
+  def dataCharacteristics = _dataCharacteristics
 
   override def incRemoteBlocksFetched(v: Long): Unit = _remoteBlocksFetched += v
   override def incLocalBlocksFetched(v: Long): Unit = _localBlocksFetched += v
@@ -154,4 +185,19 @@ private[spark] class TempShuffleReadMetrics extends ShuffleReadMetricsReporter {
   def localBytesRead: Long = _localBytesRead
   def fetchWaitTime: Long = _fetchWaitTime
   def recordsRead: Long = _recordsRead
+
+  val recordCharacteristics: Boolean =
+    SparkEnv.get.conf.getBoolean("spark.metrics.shuffleRead.dataCharacteristics", true)
+
+  private[spark] def recordIterator(iter: Iterator[(_, _)]): Iterator[(_, _)] = {
+    if (recordCharacteristics) {
+      iter.map {
+        pair =>
+          _dataCharacteristics.add((pair._1, 1.0d))
+          pair
+      }
+    } else {
+      iter
+    }
+  }
 }

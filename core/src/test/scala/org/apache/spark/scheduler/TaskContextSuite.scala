@@ -70,7 +70,17 @@ class TaskContextSuite extends SparkFunSuite with BeforeAndAfter with LocalSpark
       0, 0, taskBinary, rdd.partitions(0), Seq.empty, 0, new Properties,
       closureSerializer.serialize(TaskMetrics.registered).array())
     intercept[RuntimeException] {
-      task.run(0, 0, null)
+      val taskContext = new TaskContextImpl(
+        task.stageId,
+        task.stageAttemptId,
+        task.partitionId,
+        0,
+        0,
+        ???,
+        task.localProperties,
+        null,
+        task.metrics)
+      task.run(0, 0, null, taskContext)
     }
     assert(TaskContextSuite.completed)
   }
@@ -92,7 +102,17 @@ class TaskContextSuite extends SparkFunSuite with BeforeAndAfter with LocalSpark
       0, 0, taskBinary, rdd.partitions(0), Seq.empty, 0, new Properties,
       closureSerializer.serialize(TaskMetrics.registered).array())
     intercept[RuntimeException] {
-      task.run(0, 0, null)
+      val taskContext = new TaskContextImpl(
+        task.stageId,
+        task.stageAttemptId,
+        task.partitionId,
+        0,
+        0,
+        ???,
+        task.localProperties,
+        null,
+        task.metrics)
+      task.run(0, 0, null, taskContext)
     }
     assert(TaskContextSuite.lastError.getMessage == "damn error")
   }

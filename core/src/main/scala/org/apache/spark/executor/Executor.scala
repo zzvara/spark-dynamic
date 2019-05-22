@@ -39,6 +39,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
 import org.apache.spark.memory.{SparkOutOfMemoryError, TaskMemoryManager}
 import org.apache.spark.metrics.source.JVMCPUSource
+import org.apache.spark.repartitioning.RepartitioningTrackerWorker
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.scheduler._
 import org.apache.spark.shuffle.FetchFailedException
@@ -419,10 +420,30 @@ private[spark] class Executor(
         } else 0L
         var threwException = true
         val value = Utils.tryWithSafeFinally {
+          val context = new TaskContextImpl(
+            task.stageId,
+            task.stageAttemptId, // stageAttemptId and stageAttemptNumber are semantically equal
+            task.partitionId,
+            taskId,
+            taskDescription.attemptNumber,
+            taskMemoryManager,
+            task.localProperties,
+            env.metricsSystem,
+            task.metrics)
+          SparkEnv.get.repartitioningWorker() match {
+            case Some(trackerWorker) =>
+              trackerWorker.asInstanceOf[RepartitioningTrackerWorker].taskArrival(
+                taskId,
+                task.stageId,
+                context)
+            case _ => ()
+          }
+          logInfo(s"Actually running task $taskId")
           val res = task.run(
             taskAttemptId = taskId,
             attemptNumber = taskDescription.attemptNumber,
-            metricsSystem = env.metricsSystem)
+            metricsSystem = env.metricsSystem,
+            taskContext = context)
           threwException = false
           res
         } {
@@ -484,6 +505,8 @@ private[spark] class Executor(
         task.metrics.setJvmGCTime(computeTotalGcTime() - startGCTime)
         task.metrics.setResultSerializationTime(TimeUnit.NANOSECONDS.toMillis(
           afterSerializationNs - beforeSerializationNs))
+        task.metrics.shuffleWriteMetrics.compact()
+        task.metrics.shuffleReadMetrics.compact()
 
         // Expose task metrics using the Dropwizard metrics system.
         // Update task metrics counters

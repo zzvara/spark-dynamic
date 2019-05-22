@@ -31,7 +31,7 @@ private[spark] class ResultStage(
     id: Int,
     rdd: RDD[_],
     val func: (TaskContext, Iterator[_]) => _,
-    val partitions: Array[Int],
+    var partitions: Array[Int],
     parents: List[Stage],
     firstJobId: Int,
     callSite: CallSite)
@@ -45,12 +45,25 @@ private[spark] class ResultStage(
 
   def activeJob: Option[ActiveJob] = _activeJob
 
+  private[this] val _numPartitions = rdd.getNumPartitions
+
   def setActiveJob(job: ActiveJob): Unit = {
     _activeJob = Option(job)
   }
 
   def removeActiveJob(): Unit = {
     _activeJob = None
+  }
+
+  def setPartitions(newPartitions: Array[Int]): Unit = {
+    // We do this to prevent the ignorance of cases when not all partitions are required from the result stage
+    if (partitions.length == _numPartitions || newPartitions.length < partitions.max) {
+      partitions = newPartitions
+    }
+    activeJob.foreach(_.listener match {
+      case jw: JobWaiter[_] => jw.refinePartitioning(newPartitions.length)
+      case _ =>
+    })
   }
 
   /**

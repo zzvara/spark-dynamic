@@ -17,8 +17,11 @@
 
 package org.apache.spark.internal
 
+import java.util.Base64
+
 import scala.collection.JavaConverters._
 
+import org.apache.commons.lang3.SerializationUtils
 import org.apache.log4j._
 import org.apache.log4j.spi.{Filter, LoggingEvent}
 import org.slf4j.{Logger, LoggerFactory}
@@ -36,6 +39,8 @@ trait Logging {
   // Make the log field transient so that objects with Logging can
   // be serialized and used on another machine
   @transient private var log_ : Logger = null
+
+  private val serializedObjectPrefix = "|||"
 
   // Method to get the logger name for this object
   protected def logName = {
@@ -92,6 +97,13 @@ trait Logging {
 
   protected def logError(msg: => String, throwable: Throwable) {
     if (log.isErrorEnabled) log.error(msg, throwable)
+  }
+
+  protected def logObject(any: Serializable) = {
+    if (log.isInfoEnabled) {
+      val serialized = SerializationUtils.serialize(any)
+      log.info(serializedObjectPrefix + new String(Base64.getEncoder.encode(serialized)))
+    }
   }
 
   protected def isTraceEnabled(): Boolean = {

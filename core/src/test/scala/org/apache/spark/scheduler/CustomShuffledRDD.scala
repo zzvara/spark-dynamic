@@ -89,9 +89,7 @@ class CustomShuffledRDD[K, V, C](
 
   override def getDependencies: Seq[Dependency[_]] = List(dependency)
 
-  override val partitioner = {
-    Some(new CoalescedPartitioner(dependency.partitioner, partitionStartIndices))
-  }
+  partitioner = Some(new CoalescedPartitioner(dependency.partitioner, partitionStartIndices))
 
   override def getPartitions: Array[Partition] = {
     val n = dependency.partitioner.numPartitions

@@ -26,6 +26,7 @@ import scala.collection.mutable
 import scala.util.Properties
 
 import com.google.common.collect.MapMaker
+import hu.sztaki.drc.component.RepartitioningTracker
 import org.apache.hadoop.conf.Configuration
 
 import org.apache.spark.annotation.DeveloperApi
@@ -36,6 +37,7 @@ import org.apache.spark.internal.config._
 import org.apache.spark.memory.{MemoryManager, UnifiedMemoryManager}
 import org.apache.spark.metrics.{MetricsSystem, MetricsSystemInstances}
 import org.apache.spark.network.netty.NettyBlockTransferService
+import org.apache.spark.repartitioning.{RepartitioningTrackerFactory, RepartitioningTrackerMaster, RepartitioningTrackerWorker}
 import org.apache.spark.rpc.{RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler.{LiveListenerBus, OutputCommitCoordinator}
 import org.apache.spark.scheduler.OutputCommitCoordinator.OutputCommitCoordinatorEndpoint
@@ -60,6 +62,7 @@ class SparkEnv (
     val closureSerializer: Serializer,
     val serializerManager: SerializerManager,
     val mapOutputTracker: MapOutputTracker,
+    val repartitioningTracker: Option[RepartitioningTracker[RpcEndpointRef]],
     val shuffleManager: ShuffleManager,
     val broadcastManager: BroadcastManager,
     val blockManager: BlockManager,
@@ -130,6 +133,15 @@ class SparkEnv (
     synchronized {
       val key = (pythonExec, envVars)
       pythonWorkers.get(key).foreach(_.releaseWorker(worker))
+    }
+  }
+
+  def repartitioningWorker(): Option[RepartitioningTrackerWorker] = {
+    repartitioningTracker match {
+      case Some(master: RepartitioningTrackerMaster) =>
+        Some(master.getLocalWorker.get.asInstanceOf[RepartitioningTrackerWorker])
+      case _ =>
+        repartitioningTracker.asInstanceOf[Option[RepartitioningTrackerWorker]]
     }
   }
 }
@@ -311,6 +323,47 @@ object SparkEnv extends Logging {
       new MapOutputTrackerMasterEndpoint(
         rpcEnv, mapOutputTracker.asInstanceOf[MapOutputTrackerMaster], conf))
 
+    val repartitioningFactoryClass = Utils.classForName(conf.get(
+      "spark.repartitioning.factory",
+      "org.apache.spark.repartitioning.BatchRepartitioningTrackerFactory")
+    ).asInstanceOf[Class[RepartitioningTrackerFactory]].newInstance()
+
+    logInfo(s"Repartitioning factory class is ${repartitioningFactoryClass.getClass.getName}.")
+
+    val repartitioningTracker =
+      if (conf.getBoolean("spark.repartitioning.enabled", true)) {
+        Some(if (isDriver) {
+          val repartitioningTrackerMaster =
+            repartitioningFactoryClass.createMaster(rpcEnv, conf)
+
+          repartitioningTrackerMaster.master =
+            registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,
+              repartitioningTrackerMaster)
+
+          listenerBus.addToQueue(repartitioningTrackerMaster.eventListener, "repartitioning")
+
+          if (isLocal) {
+            repartitioningTrackerMaster.initializeLocalWorker()
+          }
+
+          repartitioningTrackerMaster
+        } else {
+          val repartitioningTrackerWorker =
+            repartitioningFactoryClass.createWorker(rpcEnv, conf, executorId)
+
+          repartitioningTrackerWorker.master
+            = registerOrLookupEndpoint(RepartitioningTracker.MASTER_ENDPOINT_NAME,
+            repartitioningTrackerWorker.asInstanceOf[RepartitioningTrackerMaster])
+
+          repartitioningTrackerWorker.register()
+
+          repartitioningTrackerWorker
+        })
+      } else {
+        logInfo("Repartitioning is switched off.")
+        None
+      }
+
     // Let the user specify short names for shuffle managers
     val shortShuffleMgrNames = Map(
       "sort" -> classOf[org.apache.spark.shuffle.sort.SortShuffleManager].getName,
@@ -372,6 +425,7 @@ object SparkEnv extends Logging {
       closureSerializer,
       serializerManager,
       mapOutputTracker,
+      repartitioningTracker,
       shuffleManager,
       broadcastManager,
       blockManager,

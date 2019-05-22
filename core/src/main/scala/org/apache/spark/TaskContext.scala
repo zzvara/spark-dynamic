@@ -20,6 +20,8 @@ package org.apache.spark
 import java.io.Serializable
 import java.util.Properties
 
+import hu.sztaki.drc.Context
+
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.memory.TaskMemoryManager
@@ -78,13 +80,21 @@ object TaskContext {
  *   org.apache.spark.TaskContext.get()
  * }}}
  */
-abstract class TaskContext extends Serializable {
+abstract class TaskContext extends Context[TaskMetrics] with Serializable {
   // Note: TaskContext must NOT define a get method. Otherwise it will prevent the Scala compiler
   // from generating a static get method (based on the companion object's get method).
 
   // Note: Update JavaTaskContextCompileCheck when new methods are added to this class.
 
   // Note: getters in this class are defined with parentheses to maintain backward compatibility.
+
+  private var _isDataAware = true
+
+  def setDataAwareness(isDataAware: Boolean): Unit = {
+    _isDataAware = isDataAware
+  }
+
+  def isDataAware: Boolean = _isDataAware
 
   /**
    * Returns true if the task has completed.

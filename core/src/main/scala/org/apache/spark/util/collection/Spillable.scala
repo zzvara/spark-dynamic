@@ -60,13 +60,13 @@ private[spark] abstract class Spillable[C](taskMemoryManager: TaskMemoryManager)
 
   // Threshold for this collection's size in bytes before we start tracking its memory usage
   // To avoid a large number of small spills, initialize this to a value orders of magnitude > 0
-  @volatile private[this] var myMemoryThreshold = initialMemoryThreshold
+  private[this] var myMemoryThreshold = initialMemoryThreshold
 
   // Number of elements read from input since last spill
-  private[this] var _elementsRead = 0
+  var _elementsRead = 0
 
   // Number of bytes spilled in total
-  @volatile private[this] var _memoryBytesSpilled = 0L
+  private[this] var _memoryBytesSpilled = 0L
 
   // Number of spills
   private[this] var _spillCount = 0

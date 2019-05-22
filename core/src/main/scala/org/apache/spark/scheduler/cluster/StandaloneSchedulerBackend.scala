@@ -58,6 +58,8 @@ private[spark] class StandaloneSchedulerBackend(
   private val maxCores = conf.get(config.CORES_MAX)
   private val totalExpectedCores = maxCores.getOrElse(0)
 
+  override def totalSlots(): Int = totalExpectedCores
+
   override def start() {
     super.start()
 

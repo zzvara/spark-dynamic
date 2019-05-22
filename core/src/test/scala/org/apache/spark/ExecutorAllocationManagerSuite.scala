@@ -827,14 +827,14 @@ class ExecutorAllocationManagerSuite
     assert(removeTimes(manager).contains("executor-2"))
 
     // Existing executors have disconnected
-    post(sc.listenerBus, SparkListenerExecutorRemoved(0L, "executor-1", ""))
+    post(sc.listenerBus, SparkListenerExecutorRemoved(0L, "executor-1", "", null))
     assert(executorIds(manager).size === 1)
     assert(!executorIds(manager).contains("executor-1"))
     assert(removeTimes(manager).size === 1)
     assert(!removeTimes(manager).contains("executor-1"))
 
     // Unknown executor has disconnected
-    post(sc.listenerBus, SparkListenerExecutorRemoved(0L, "executor-3", ""))
+    post(sc.listenerBus, SparkListenerExecutorRemoved(0L, "executor-3", "", null))
     assert(executorIds(manager).size === 1)
     assert(removeTimes(manager).size === 1)
   }
@@ -1179,7 +1179,7 @@ class ExecutorAllocationManagerSuite
       0L, "3", new ExecutorInfo("host3", 1, Map.empty, Map.empty)))
     assert(executorIds(manager).size === 3)
 
-    post(sc.listenerBus, SparkListenerExecutorRemoved(0L, "3", "disconnected"))
+    post(sc.listenerBus, SparkListenerExecutorRemoved(0L, "3", "disconnected", null))
     assert(executorIds(manager).size === 2)
     assert(executorIds(manager) === Set("1", "2"))
 
@@ -1231,7 +1231,7 @@ private object ExecutorAllocationManagerSuite extends PrivateMethodTester {
       numTasks: Int,
       taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty
     ): StageInfo = {
-    new StageInfo(stageId, 0, "name", numTasks, Seq.empty, Seq.empty, "no details",
+    new StageInfo(stageId, 0, 0, "name", numTasks, None, Seq.empty, Seq.empty, "no details",
       taskLocalityPreferences = taskLocalityPreferences)
   }
 

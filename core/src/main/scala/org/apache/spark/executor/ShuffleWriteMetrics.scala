@@ -17,9 +17,10 @@
 
 package org.apache.spark.executor
 
+import org.apache.spark.Partitioner
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.shuffle.ShuffleWriteMetricsReporter
-import org.apache.spark.util.LongAccumulator
+import org.apache.spark.util.{DataCharacteristicsAccumulator, LongAccumulator}
 
 
 /**
@@ -32,6 +33,41 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
   private[executor] val _bytesWritten = new LongAccumulator
   private[executor] val _recordsWritten = new LongAccumulator
   private[executor] val _writeTime = new LongAccumulator
+  private[executor] val _repartitioningTime = new LongAccumulator
+  private[executor] val _insertionTime = new LongAccumulator
+  private[executor] val _dataCharacteristics = new DataCharacteristicsAccumulator
+
+  private var _repartitioner: Option[Partitioner] = None
+  private var _repartitioningIsFinished = false
+
+  // TODO: Getter should not make it a None
+  def repartitioner: Option[Partitioner] = {
+    val result = _repartitioner
+    _repartitioner = None
+    result
+  }
+
+  private[spark] def setDataCharacteristics(s: Map[Any, Double]): Unit = {
+    _dataCharacteristics.setValue(s)
+  }
+
+  private[spark] def setRepartitioner(repartitioner: Partitioner) {
+    _repartitioner = Some(repartitioner)
+  }
+
+
+  // TODO: Why is there a flag?
+  private[spark] def finishRepartitioning(flag: Boolean = true) {
+    if (flag) {
+      _repartitioningIsFinished = true
+    }
+  }
+
+  def dataCharacteristics: DataCharacteristicsAccumulator = _dataCharacteristics
+
+
+  // TODO: Compact data characteristics.
+  def compact(): Unit = {}
 
   /**
    * Number of bytes written for the shuffle by this task.
@@ -48,9 +84,22 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
    */
   def writeTime: Long = _writeTime.sum
 
+  /**
+    * Time the task spent repartitioning the previously written data.
+    */
+  def repartitioningTime: Long = _repartitioningTime.sum
+
+  def insertionTime: Long = _insertionTime.sum
+
+  private[spark] def addKeyWritten(k: Any, complexity: Int): Unit = {
+    _dataCharacteristics.add((k, complexity))
+  }
+
   private[spark] override def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] override def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)
   private[spark] override def incWriteTime(v: Long): Unit = _writeTime.add(v)
+  private[spark] override def incRepartitioningTime(v: Long): Unit = _repartitioningTime.add(v)
+  private[spark] override def incInsertionTime(v: Long): Unit = _insertionTime.add(v)
   private[spark] override def decBytesWritten(v: Long): Unit = {
     _bytesWritten.setValue(bytesWritten - v)
   }

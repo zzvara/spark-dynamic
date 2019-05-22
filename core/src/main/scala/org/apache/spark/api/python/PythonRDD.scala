@@ -51,9 +51,7 @@ private[spark] class PythonRDD(
 
   override def getPartitions: Array[Partition] = firstParent.partitions
 
-  override val partitioner: Option[Partitioner] = {
-    if (preservePartitoning) firstParent.partitioner else None
-  }
+  partitioner = if (preservePartitoning) firstParent.partitioner else None
 
   val asJavaRDD: JavaRDD[Array[Byte]] = JavaRDD.fromRDD(this)
 
@@ -95,7 +93,7 @@ private[spark] class PythonException(msg: String, cause: Throwable)
  */
 private class PairwiseRDD(prev: RDD[Array[Byte]]) extends RDD[(Long, Array[Byte])](prev) {
   override def getPartitions: Array[Partition] = prev.partitions
-  override val partitioner: Option[Partitioner] = prev.partitioner
+  partitioner = prev.partitioner
   override def compute(split: Partition, context: TaskContext): Iterator[(Long, Array[Byte])] =
     prev.iterator(split, context).grouped(2).map {
       case Seq(a, b) => (Utils.deserializeLongValue(a), b)
@@ -147,7 +145,7 @@ private[spark] object PythonRDD extends Logging {
     type ByteArray = Array[Byte]
     type UnrolledPartition = Array[ByteArray]
     val allPartitions: Array[UnrolledPartition] =
-      sc.runJob(rdd, (x: Iterator[ByteArray]) => x.toArray, partitions.asScala)
+      sc.runJob(rdd, (x: Iterator[ByteArray]) => x.toArray, partitions.asScala, None)
     val flattenedPartition: UnrolledPartition = Array.concat(allPartitions: _*)
     serveIterator(flattenedPartition.iterator,
       s"serve RDD ${rdd.id} with partitions ${partitions.asScala.mkString(",")}")
@@ -183,7 +181,7 @@ private[spark] object PythonRDD extends Logging {
 
         // Collects a partition on each iteration
         val collectPartitionIter = rdd.partitions.indices.iterator.map { i =>
-          rdd.sparkContext.runJob(rdd, (iter: Iterator[Any]) => iter.toArray, Seq(i)).head
+          rdd.sparkContext.runJob(rdd, (iter: Iterator[Any]) => iter.toArray, Seq(i), None).head
         }
 
         // Read request for data and send next partition if nonzero

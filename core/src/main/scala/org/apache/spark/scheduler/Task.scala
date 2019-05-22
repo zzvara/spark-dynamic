@@ -22,6 +22,7 @@ import java.util.Properties
 
 import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config.APP_CALLER_CONTEXT
 import org.apache.spark.memory.{MemoryMode, TaskMemoryManager}
 import org.apache.spark.metrics.MetricsSystem
@@ -63,7 +64,7 @@ private[spark] abstract class Task[T](
     val jobId: Option[Int] = None,
     val appId: Option[String] = None,
     val appAttemptId: Option[String] = None,
-    val isBarrier: Boolean = false) extends Serializable {
+    val isBarrier: Boolean = false) extends Serializable with Logging {
 
   @transient lazy val metrics: TaskMetrics =
     SparkEnv.get.closureSerializer.newInstance().deserialize(ByteBuffer.wrap(serializedTaskMetrics))
@@ -78,20 +79,11 @@ private[spark] abstract class Task[T](
   final def run(
       taskAttemptId: Long,
       attemptNumber: Int,
-      metricsSystem: MetricsSystem): T = {
+      metricsSystem: MetricsSystem,
+      taskContext: TaskContextImpl): T = {
     SparkEnv.get.blockManager.registerTask(taskAttemptId)
     // TODO SPARK-24874 Allow create BarrierTaskContext based on partitions, instead of whether
     // the stage is barrier.
-    val taskContext = new TaskContextImpl(
-      stageId,
-      stageAttemptId, // stageAttemptId and stageAttemptNumber are semantically equal
-      partitionId,
-      taskAttemptId,
-      attemptNumber,
-      taskMemoryManager,
-      localProperties,
-      metricsSystem,
-      metrics)
 
     context = if (isBarrier) {
       new BarrierTaskContext(taskContext)
@@ -118,6 +110,7 @@ private[spark] abstract class Task[T](
       Option(attemptNumber)).setCurrentContext()
 
     try {
+      logInfo(s"Running task for partition $partitionId")
       runTask(context)
     } catch {
       case e: Throwable =>
@@ -159,6 +152,7 @@ private[spark] abstract class Task[T](
     }
   }
 
+  // TaskMemoryManager is not used here anymore, but we keep it for consistency
   private var taskMemoryManager: TaskMemoryManager = _
 
   def setTaskMemoryManager(taskMemoryManager: TaskMemoryManager): Unit = {

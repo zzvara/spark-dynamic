@@ -31,7 +31,7 @@ import org.apache.spark.annotation.DeveloperApi
  * If your BlockId should be serializable, be sure to add it to the BlockId.apply() method.
  */
 @DeveloperApi
-sealed abstract class BlockId {
+sealed abstract class BlockId extends Serializable {
   /** A globally unique identifier for this Block. Can be used for ser/de. */
   def name: String
 
@@ -137,4 +137,10 @@ object BlockId {
     case _ =>
       throw new UnrecognizedBlockId(name)
   }
+}
+
+private[spark] case class RepartitionBlockId(id: String, numPartitions: Int)
+  extends BlockId {
+
+  override def name: String = id + "_" + numPartitions
 }

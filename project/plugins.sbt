@@ -45,12 +45,16 @@ addSbtPlugin("com.cavorite" % "sbt-avro" % "0.3.2")
 
 addSbtPlugin("io.spray" % "sbt-revolver" % "0.9.1")
 
-libraryDependencies += "org.ow2.asm"  % "asm" % "7.1"
+libraryDependencies += "org.ow2.asm" % "asm" % "7.1"
 
-libraryDependencies += "org.ow2.asm"  % "asm-commons" % "7.1"
+libraryDependencies += "org.ow2.asm" % "asm-commons" % "7.1"
 
 // sbt 1.0.0 support: https://github.com/ihji/sbt-antlr4/issues/14
 addSbtPlugin("com.simplytyped" % "sbt-antlr4" % "0.7.13")
+
+libraryDependencies += "hu.sztaki" % "dynamic-repartitioning-core_2.12" % "0.2.0-SNAPSHOT"
+
+resolvers += Resolver.defaultLocal
 
 // Spark uses a custom fork of the sbt-pom-reader plugin which contains a patch to fix issues
 // related to test-jar dependencies (https://github.com/sbt/sbt-pom-reader/pull/14). The source for

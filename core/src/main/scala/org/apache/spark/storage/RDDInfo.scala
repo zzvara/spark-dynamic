@@ -17,10 +17,11 @@
 
 package org.apache.spark.storage
 
-import org.apache.spark.SparkEnv
+import scala.collection.mutable
+import org.apache.spark.{ShuffleDependency, SparkEnv}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.config._
-import org.apache.spark.rdd.{RDD, RDDOperationScope}
+import org.apache.spark.rdd.{RDD, RDDOperationScope, ShuffledRDD}
 import org.apache.spark.util.Utils
 
 @DeveloperApi
@@ -31,7 +32,9 @@ class RDDInfo(
     var storageLevel: StorageLevel,
     val parentIds: Seq[Int],
     val callSite: String = "",
-    val scope: Option[RDDOperationScope] = None)
+    val scope: Option[RDDOperationScope] = None,
+    val properties: mutable.Map[String, Any] = mutable.Map[String, Any](),
+    val shuffleDependency: List[Int] = List.empty)
   extends Ordered[RDDInfo] {
 
   var numCachedPartitions = 0
@@ -67,7 +70,14 @@ private[spark] object RDDInfo {
     } else {
       rdd.creationSite.shortForm
     }
+
+    val shuffleDependency = rdd match {
+      case r: ShuffledRDD[_, _, _] => r.getDependencies
+        .map(_.asInstanceOf[ShuffleDependency[_, _, _]].shuffleId)
+      case _ => List.empty
+    }
+
     new RDDInfo(rdd.id, rddName, rdd.partitions.length,
-      rdd.getStorageLevel, parentIds, callSite, rdd.scope)
+      rdd.getStorageLevel, parentIds, callSite, rdd.scope, rdd.getProperties, shuffleDependency.toList)
   }
 }

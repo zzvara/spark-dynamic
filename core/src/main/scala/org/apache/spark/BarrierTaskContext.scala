@@ -218,6 +218,16 @@ class BarrierTaskContext private[spark] (
   }
 
   override private[spark] def getLocalProperties: Properties = taskContext.getLocalProperties
+
+  override def partitionID(): Int = partitionId
+
+  def attemptId(): Int = taskAttemptId.toInt
+
+  def attemptID(): Int = attemptId()
+
+  override def stageID(): Int = stageId
+
+  override def metrics(): TaskMetrics = taskMetrics
 }
 
 @Experimental

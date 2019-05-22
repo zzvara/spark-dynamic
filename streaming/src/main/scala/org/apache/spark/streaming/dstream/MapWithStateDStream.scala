@@ -21,6 +21,7 @@ import scala.reflect.ClassTag
 
 import org.apache.spark._
 import org.apache.spark.annotation.Experimental
+import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.{EmptyRDD, RDD}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming._
@@ -41,7 +42,7 @@ import org.apache.spark.streaming.rdd.{MapWithStateRDD, MapWithStateRDDRecord}
  */
 @Experimental
 sealed abstract class MapWithStateDStream[KeyType, ValueType, StateType, MappedType: ClassTag](
-    ssc: StreamingContext) extends DStream[MappedType](ssc) {
+    ssc: StreamingContext) extends DStream[MappedType](ssc) with Logging {
 
   /** Return a pair DStream where each RDD is the snapshot of the state of all the keys. */
   def stateSnapshots(): DStream[(KeyType, StateType)]
@@ -108,8 +109,12 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
 
   persist(StorageLevel.MEMORY_ONLY)
 
-  private val partitioner = spec.getPartitioner().getOrElse(
+  private var partitioner = spec.getPartitioner().getOrElse(
     new HashPartitioner(ssc.sc.defaultParallelism))
+
+  def repartition(part: Partitioner): Unit ={
+    partitioner = part
+  }
 
   private val mappingFunction = spec.getFunction()
 
@@ -130,22 +135,24 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
 
   /** Method that generates an RDD for the given time */
   override def compute(validTime: Time): Option[RDD[MapWithStateRDDRecord[K, S, E]]] = {
+    val part = partitioner
+
     // Get the previous state or create a new empty state RDD
     val prevStateRDD = getOrCompute(validTime - slideDuration) match {
       case Some(rdd) =>
-        if (rdd.partitioner != Some(partitioner)) {
+        if (rdd.partitioner != Some(part)) {
           // If the RDD is not partitioned the right way, let us repartition it using the
           // partition index as the key. This is to ensure that state RDD is always partitioned
           // before creating another state RDD using it
           MapWithStateRDD.createFromRDD[K, V, S, E](
-            rdd.flatMap { _.stateMap.getAll() }, partitioner, validTime)
+            rdd.flatMap { _.stateMap.getAll() }, part, validTime)
         } else {
           rdd
         }
       case None =>
         MapWithStateRDD.createFromPairRDD[K, V, S, E](
           spec.getInitialStateRDD().getOrElse(new EmptyRDD[(K, S)](ssc.sparkContext)),
-          partitioner,
+          part,
           validTime
         )
     }
@@ -156,12 +163,14 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
     val dataRDD = parent.getOrCompute(validTime).getOrElse {
       context.sparkContext.emptyRDD[(K, V)]
     }
-    val partitionedDataRDD = dataRDD.partitionBy(partitioner)
+    val partitionedDataRDD = dataRDD.partitionBy(part)
     val timeoutThresholdTime = spec.getTimeoutInterval().map { interval =>
       (validTime - interval).milliseconds
     }
-    Some(new MapWithStateRDD(
-      prevStateRDD, partitionedDataRDD, mappingFunction, validTime, timeoutThresholdTime))
+    val resultRDD = new MapWithStateRDD(
+      prevStateRDD, partitionedDataRDD, mappingFunction, validTime, timeoutThresholdTime)
+    resultRDD.addProperty("stream", Stream(id, resultRDD.getNumPartitions, 0L, ssc.graph.batchDuration))
+    Some(resultRDD)
   }
 }
 

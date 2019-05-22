@@ -111,6 +111,10 @@ class SQLShuffleWriteMetricsReporter(
     metrics(SQLShuffleWriteMetricsReporter.SHUFFLE_RECORDS_WRITTEN)
   private[this] val _writeTime =
     metrics(SQLShuffleWriteMetricsReporter.SHUFFLE_WRITE_TIME)
+  private[this] val _repartitioningTime =
+    metrics(SQLShuffleWriteMetricsReporter.SHUFFLE_REPARTITIONING_TIME)
+  private[this] val _insertionTime =
+    metrics(SQLShuffleWriteMetricsReporter.SHUFFLE_INSERTION_TIME)
 
   override def incBytesWritten(v: Long): Unit = {
     metricsReporter.incBytesWritten(v)
@@ -132,12 +136,24 @@ class SQLShuffleWriteMetricsReporter(
     metricsReporter.decBytesWritten(v)
     _bytesWritten.set(_bytesWritten.value - v)
   }
+
+  override def incRepartitioningTime(v: Long): Unit = {
+    metricsReporter.incRepartitioningTime(v)
+    _repartitioningTime.add(v)
+  }
+
+  override def incInsertionTime(v: Long): Unit = {
+    metricsReporter.incInsertionTime(v)
+    _insertionTime.add(v)
+  }
 }
 
 object SQLShuffleWriteMetricsReporter {
   val SHUFFLE_BYTES_WRITTEN = "shuffleBytesWritten"
   val SHUFFLE_RECORDS_WRITTEN = "shuffleRecordsWritten"
   val SHUFFLE_WRITE_TIME = "shuffleWriteTime"
+  val SHUFFLE_REPARTITIONING_TIME = "shuffleRepartitioningTime"
+  val SHUFFLE_INSERTION_TIME = "shuffleInsertionTime"
 
   /**
    * Create all shuffle write relative metrics and return the Map.

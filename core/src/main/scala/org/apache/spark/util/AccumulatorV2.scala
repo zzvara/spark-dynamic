@@ -23,6 +23,10 @@ import java.util.{ArrayList, Collections}
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
+import scala.reflect.ClassTag
+
+import hu.sztaki.drc.{Conceptier, Sampling}
+
 import org.apache.spark.{InternalAccumulator, SparkContext, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler.AccumulableInfo
@@ -470,6 +474,8 @@ class CollectionAccumulator[T] extends AccumulatorV2[T, java.util.List[T]] {
 
   override def add(v: T): Unit = _list.add(v)
 
+  def add(coll: java.util.List[T]): Unit = _list.addAll(coll)
+
   override def merge(other: AccumulatorV2[T, java.util.List[T]]): Unit = other match {
     case o: CollectionAccumulator[T] => _list.addAll(o.value)
     case _ => throw new UnsupportedOperationException(
@@ -484,4 +490,50 @@ class CollectionAccumulator[T] extends AccumulatorV2[T, java.util.List[T]] {
     _list.clear()
     _list.addAll(newValue)
   }
+}
+
+class DataCharacteristicsAccumulator
+  extends AccumulatorV2[(Any, Double), Map[Any, Double]] with Conceptier {
+  override def isZero: Boolean = isEmpty
+
+  override def copy(): AccumulatorV2[(Any, Double), Map[Any, Double]] = {
+    val newMap = new DataCharacteristicsAccumulator
+    newMap.setValue(super.value)
+    newMap
+  }
+
+  override def reset(): Unit = super.reset()
+
+  override def value: Map[Any, Double] = super.value
+
+  override def merge(other: AccumulatorV2[(Any, Double), Map[Any, Double]]): Unit = {
+    mergeWith(other.asInstanceOf[Sampling])
+  }
+
+  override protected var HISTOGRAM_HARD_BOUNDARY: Int = this.INITIAL_HARD_BOUNDARY
+}
+
+private[spark] object DataCharacteristicsAccumulator {
+  def merge[A, B](zero: B)(f: (B, B) => B)(s1: Map[A, B], s2: Map[A, B]): Map[A, B] = {
+    s1 ++ s2.map{ case (k, v) => k -> f(v, s1.getOrElse(k, zero)) }
+  }
+
+  def weightedMerge[A](zero: Double, weightOfFirst: Double)
+    (s1: Map[A, Double], s2: Seq[(A, Double)]): Seq[(A, Double)] = {
+    val weightedS1 = s1.map(pair => (pair._1, pair._2 * weightOfFirst))
+    (
+      weightedS1 ++
+        s2.map{ case (k, v) => k -> (v * (1 - weightOfFirst) + weightedS1.getOrElse(k, zero)) }
+      ).toSeq
+  }
+
+  def isWeightable[T]()(implicit mf: ClassTag[T]): Boolean =
+    classOf[Weightable] isAssignableFrom mf.runtimeClass
+
+  def className[T]()(implicit mf: ClassTag[T]): String =
+    mf.runtimeClass.getCanonicalName
+}
+
+abstract class Weightable {
+  def complexity(): Int
 }

@@ -3282,7 +3282,8 @@ class Dataset[T] private[sql](
           arrowBatchRdd,
           (ctx: TaskContext, it: Iterator[Array[Byte]]) => it.toArray,
           0 until numPartitions,
-          handlePartitionBatches)
+          handlePartitionBatches,
+          None)
       }
     }
   }

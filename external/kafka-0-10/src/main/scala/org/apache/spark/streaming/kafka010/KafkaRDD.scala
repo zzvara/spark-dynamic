@@ -135,7 +135,8 @@ private[spark] class KafkaRDD[K, V](
         context.runJob(
           this,
           (tc: TaskContext, it: Iterator[ConsumerRecord[K, V]]) =>
-          it.take(parts(tc.partitionId)).toArray, parts.keys.toArray
+          it.take(parts(tc.partitionId)).toArray, parts.keys.toArray,
+          None
         ).flatten
       }
     }

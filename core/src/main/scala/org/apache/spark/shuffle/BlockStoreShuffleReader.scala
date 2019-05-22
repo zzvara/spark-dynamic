@@ -17,6 +17,8 @@
 
 package org.apache.spark.shuffle
 
+import scala.reflect.ClassTag
+
 import org.apache.spark._
 import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.serializer.SerializerManager
@@ -28,7 +30,7 @@ import org.apache.spark.util.collection.ExternalSorter
  * Fetches and reads the partitions in range [startPartition, endPartition) from a shuffle by
  * requesting them from other nodes' block stores.
  */
-private[spark] class BlockStoreShuffleReader[K, C](
+private[spark] class BlockStoreShuffleReader[K, C : ClassTag](
     handle: BaseShuffleHandle[K, _, C],
     startPartition: Int,
     endPartition: Int,

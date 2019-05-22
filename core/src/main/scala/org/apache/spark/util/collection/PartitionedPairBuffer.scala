@@ -19,7 +19,6 @@ package org.apache.spark.util.collection
 
 import java.util.Comparator
 
-import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.util.collection.WritablePartitionedPairCollection._
 
@@ -81,7 +80,7 @@ private[spark] class PartitionedPairBuffer[K, V](initialCapacity: Int = 64)
     iterator
   }
 
-  private def iterator(): Iterator[((Int, K), V)] = new Iterator[((Int, K), V)] {
+  protected def iterator(): Iterator[((Int, K), V)] = new Iterator[((Int, K), V)] {
     var pos = 0
 
     override def hasNext: Boolean = pos < curSize

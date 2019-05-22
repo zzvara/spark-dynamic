@@ -261,8 +261,8 @@ trait V2TableWriteExec extends UnaryExecNode {
           messages(index) = commitMessage
           totalNumRowsAccumulator.add(result.numRows)
           batchWrite.onDataWriterCommit(commitMessage)
-        }
-      )
+        },
+        None)
 
       logInfo(s"Data source write support $batchWrite is committing.")
       batchWrite.commit(messages)

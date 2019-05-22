@@ -208,7 +208,8 @@ object FileFormatWriter extends Logging {
         (index, res: WriteTaskResult) => {
           committer.onTaskCommit(res.commitMsg)
           ret(index) = res
-        })
+        },
+        None)
 
       val commitMsgs = ret.map(_.commitMsg)
 

@@ -317,7 +317,7 @@ private object TestUserClosuresActuallyCleaned {
   }
   def testRunJob2(sc: SparkContext): Unit = {
     val rdd = sc.parallelize(1 to 10, 10)
-    sc.runJob(rdd, { _: Iterator[Int] => return; 1 } )
+    sc.runJob(rdd, { _: Iterator[Int] => return; 1 } , None)
   }
   def testRunApproximateJob(sc: SparkContext): Unit = {
     val rdd = sc.parallelize(1 to 10, 10)

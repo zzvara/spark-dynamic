@@ -91,6 +91,17 @@ private[spark] class ShuffleMapTask(
 
     val rdd = rddAndDep._1
     val dep = rddAndDep._2
+
+    val isDataAware =
+      SparkEnv.get.repartitioningWorker() match {
+        case Some(repartitioningTrackerWorker) =>
+          repartitioningTrackerWorker.isDataAware(rdd)
+        case None => false
+      }
+
+    context.setDataAwareness(isDataAware)
+    logInfo(s"Running task for partition $partition and RDD $rdd, dependency $dep")
+
     dep.shuffleWriterProcessor.write(rdd, dep, partitionId, context, partition)
   }
 

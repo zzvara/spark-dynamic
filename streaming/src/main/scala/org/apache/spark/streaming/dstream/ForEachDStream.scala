@@ -47,6 +47,7 @@ class ForEachDStream[T: ClassTag] (
   override def generateJob(time: Time): Option[Job] = {
     parent.getOrCompute(time) match {
       case Some(rdd) =>
+        rdd.addProperty("stream", Stream(id, rdd.partitions.length, time.milliseconds, ssc.graph.batchDuration))
         val jobFunc = () => createRDDWithLocalProperties(time, displayInnerRDDOps) {
           foreachFunc(rdd, time)
         }

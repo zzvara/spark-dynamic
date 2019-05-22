@@ -642,7 +642,7 @@ private[spark] object JsonProtocol {
     val stageInfos = jsonOption(json \ "Stage Infos")
       .map(_.extract[Seq[JValue]].map(stageInfoFromJson)).getOrElse {
         stageIds.map { id =>
-          new StageInfo(id, 0, "unknown", 0, Seq.empty, Seq.empty, "unknown")
+          new StageInfo(id, 0, 0, "unknown", 0, None, Seq.empty, Seq.empty, "unknown")
         }
       }
     SparkListenerJobStart(jobId, submissionTime, stageInfos, properties)
@@ -715,7 +715,7 @@ private[spark] object JsonProtocol {
     val time = (json \ "Timestamp").extract[Long]
     val executorId = (json \ "Executor ID").extract[String]
     val reason = (json \ "Removed Reason").extract[String]
-    SparkListenerExecutorRemoved(time, executorId, reason)
+    SparkListenerExecutorRemoved(time, executorId, reason, null)
   }
 
   def logStartFromJson(json: JValue): SparkListenerLogStart = {
@@ -758,9 +758,11 @@ private[spark] object JsonProtocol {
 
   def stageInfoFromJson(json: JValue): StageInfo = {
     val stageId = (json \ "Stage ID").extract[Int]
+    val jobId = (json \ "Job ID").extract[Int]
     val attemptId = jsonOption(json \ "Stage Attempt ID").map(_.extract[Int]).getOrElse(0)
     val stageName = (json \ "Stage Name").extract[String]
     val numTasks = (json \ "Number of Tasks").extract[Int]
+    val shuffleId = (json \ "Shuffle ID").extract[Int]
     val rddInfos = (json \ "RDD Info").extract[List[JValue]].map(rddInfoFromJson)
     val parentIds = jsonOption(json \ "Parent IDs")
       .map { l => l.extract[List[JValue]].map(_.extract[Int]) }
@@ -777,7 +779,7 @@ private[spark] object JsonProtocol {
     }
 
     val stageInfo = new StageInfo(
-      stageId, attemptId, stageName, numTasks, rddInfos, parentIds, details)
+      stageId, attemptId, jobId, stageName, numTasks, Some(shuffleId), rddInfos, parentIds, details)
     stageInfo.submissionTime = submissionTime
     stageInfo.completionTime = completionTime
     stageInfo.failureReason = failureReason

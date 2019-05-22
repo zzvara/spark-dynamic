@@ -351,7 +351,8 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
           totalRegisteredExecutors.addAndGet(-1)
           scheduler.executorLost(executorId, if (killed) ExecutorKilled else reason)
           listenerBus.post(
-            SparkListenerExecutorRemoved(System.currentTimeMillis(), executorId, reason.toString))
+            SparkListenerExecutorRemoved(System.currentTimeMillis(), executorId, reason.toString,
+              executorInfo))
         case None =>
           // SPARK-15262: If an executor is still alive even after the scheduler has removed
           // its metadata, we may receive a heartbeat from that executor and tell its block
@@ -735,6 +736,8 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
   private def withLock[T](fn: => T): T = scheduler.synchronized {
     CoarseGrainedSchedulerBackend.this.synchronized { fn }
   }
+
+  override def totalSlots(): Int = totalCoreCount.intValue()
 
 }
 

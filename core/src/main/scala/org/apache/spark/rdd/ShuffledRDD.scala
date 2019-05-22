@@ -84,13 +84,19 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
         serializerManager.getSerializer(implicitly[ClassTag[K]], implicitly[ClassTag[V]])
       }
     }
-    List(new ShuffleDependency(prev, part, serializer, keyOrdering, aggregator, mapSideCombine))
+    List(new ShuffleDependency(prev, partitioner.getOrElse(part), serializer, keyOrdering, aggregator, mapSideCombine))
   }
 
-  override val partitioner = Some(part)
+  partitioner = Some(part)
+
+  override def setPartitioner(partitioner: Option[Partitioner]): Unit = {
+    clearPartitions()
+    this.partitioner = partitioner
+  }
 
   override def getPartitions: Array[Partition] = {
-    Array.tabulate[Partition](part.numPartitions)(i => new ShuffledRDDPartition(i))
+    // does not respect part when repartitioning!
+    Array.tabulate[Partition](partitioner.getOrElse(part).numPartitions)(i => new ShuffledRDDPartition(i))
   }
 
   override protected def getPreferredLocations(partition: Partition): Seq[String] = {
@@ -102,7 +108,7 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
   override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
     val metrics = context.taskMetrics().createTempShuffleReadMetrics()
-    SparkEnv.get.shuffleManager.getReader(
+    SparkEnv.get.shuffleManager.getReader[K, C](
       dep.shuffleHandle, split.index, split.index + 1, context, metrics)
       .read()
       .asInstanceOf[Iterator[(K, C)]]

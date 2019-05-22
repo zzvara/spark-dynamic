@@ -19,6 +19,8 @@ package org.apache.spark.shuffle.sort
 
 import java.util.concurrent.ConcurrentHashMap
 
+import scala.reflect.ClassTag
+
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle._
@@ -97,6 +99,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       new BypassMergeSortShuffleHandle[K, V](
         shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
     } else if (SortShuffleManager.canUseSerializedShuffle(dependency)) {
+      // TODO: Does repartitioning work for this?
       // Otherwise, try to buffer map outputs in a serialized form, since this is more efficient:
       new SerializedShuffleHandle[K, V](
         shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
@@ -110,7 +113,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
    * Get a reader for a range of reduce partitions (startPartition to endPartition-1, inclusive).
    * Called on executors by reduce tasks.
    */
-  override def getReader[K, C](
+  override def getReader[K, C : ClassTag](
       handle: ShuffleHandle,
       startPartition: Int,
       endPartition: Int,
@@ -122,7 +125,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. */
-  override def getWriter[K, V](
+  override def getWriter[K, V : ClassTag](
       handle: ShuffleHandle,
       mapId: Int,
       context: TaskContext,

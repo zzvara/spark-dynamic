@@ -23,7 +23,7 @@ import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 
 import scala.annotation.tailrec
-import scala.collection.Map
+import scala.collection.{Map, mutable}
 import scala.collection.mutable.{HashMap, HashSet, ListBuffer}
 import scala.concurrent.duration._
 import scala.util.control.NonFatal
@@ -33,12 +33,11 @@ import org.apache.commons.lang3.SerializationUtils
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.{ExecutorMetrics, TaskMetrics}
-import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config
+import org.apache.spark.internal.{Logging, config}
 import org.apache.spark.internal.config.Tests.TEST_NO_STAGE_RETRY
 import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.partial.{ApproximateActionListener, ApproximateEvaluator, PartialResult}
-import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData}
+import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData, ShuffledRDD}
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
@@ -289,7 +288,7 @@ private[spark] class DAGScheduler(
    * Called by TaskScheduler implementation when a host is added.
    */
   def executorAdded(execId: String, host: String): Unit = {
-    eventProcessLoop.post(ExecutorAdded(execId, host))
+    eventProcessLoop.post(ExecutorAdded(execId, host, taskScheduler.totalSlots()))
   }
 
   /**
@@ -305,6 +304,46 @@ private[spark] class DAGScheduler(
    */
   def speculativeTaskSubmitted(task: Task[_]): Unit = {
     eventProcessLoop.post(SpeculativeTaskSubmitted(task))
+  }
+
+  def refineChildrenStages(stageId: Int, numPartitions: Int): Unit = {
+    val partitioner = Some(new HashPartitioner(numPartitions))
+
+    def refineStage(stage: Stage, partitioner: Option[Partitioner]): Unit = {
+
+      def refreshCacheLocs(rdd: RDD[_]): Unit = {
+        cacheLocs.remove(rdd.id)
+        getCacheLocs(rdd)
+        rdd match {
+          case _rdd: ShuffledRDD[_, _, _] =>
+          case _ => rdd.dependencies match {
+            // woks only if there is only one parent
+            case par :: tail =>
+              refreshCacheLocs(par.rdd)
+            case Nil => throw new SparkException(s"Cannot refresh cache locs for stage $stageId. " +
+              s"Doing nothing.")
+          }
+        }
+      }
+
+      stage.rdd.setPartitioner(partitioner)
+      refreshCacheLocs(stage.rdd)
+
+      stage match {
+        case rs: ResultStage => partitioner match {
+          case Some(part) => rs.setPartitions((0 until part.numPartitions).toArray)
+          case None =>
+        }
+        case _ =>
+      }
+    }
+
+    logInfo(s"Repartitioning - changing number of partitions adaptively.")
+    val stage = stageIdToStage(stageId)
+    val jobId = stage.firstJobId
+    jobIdToStageIds(jobId).map(stageIdToStage)
+      .filter(_.parents.contains(stage))
+      .foreach(refineStage(_, partitioner))
   }
 
   private[scheduler]
@@ -681,7 +720,8 @@ private[spark] class DAGScheduler(
       partitions: Seq[Int],
       callSite: CallSite,
       resultHandler: (Int, U) => Unit,
-      properties: Properties): JobWaiter[U] = {
+      properties: Properties,
+      jobProperties: mutable.Map[String, Any] = mutable.Map[String, Any]()): JobWaiter[U] = {
     // Check to make sure we are not launching a task on a partition that does not exist.
     val maxPartitions = rdd.partitions.length
     partitions.find(p => p >= maxPartitions || p < 0).foreach { p =>
@@ -694,7 +734,7 @@ private[spark] class DAGScheduler(
     if (partitions.isEmpty) {
       val time = clock.getTimeMillis()
       listenerBus.post(
-        SparkListenerJobStart(jobId, time, Seq[StageInfo](), properties))
+        SparkListenerJobStart(jobId, time, Seq[StageInfo](), properties, jobProperties))
       listenerBus.post(
         SparkListenerJobEnd(jobId, time, JobSucceeded))
       // Return immediately if the job is running 0 tasks
@@ -706,7 +746,7 @@ private[spark] class DAGScheduler(
     val waiter = new JobWaiter[U](this, jobId, partitions.size, resultHandler)
     eventProcessLoop.post(JobSubmitted(
       jobId, rdd, func2, partitions.toArray, callSite, waiter,
-      SerializationUtils.clone(properties)))
+      SerializationUtils.clone(properties), jobProperties))
     waiter
   }
 
@@ -730,9 +770,15 @@ private[spark] class DAGScheduler(
       partitions: Seq[Int],
       callSite: CallSite,
       resultHandler: (Int, U) => Unit,
-      properties: Properties): Unit = {
+      properties: Properties,
+      jobProperties: Option[HashMap[String, Any]] = None): Unit = {
     val start = System.nanoTime
-    val waiter = submitJob(rdd, func, partitions, callSite, resultHandler, properties)
+    val submitProperties = jobProperties match {
+      case Some(map) => rdd.getProperties ++ map
+      case None => rdd.getProperties
+    }
+    val waiter = submitJob(rdd, func, partitions, callSite,
+      resultHandler, properties, submitProperties)
     ThreadUtils.awaitReady(waiter.completionFuture, Duration.Inf)
     waiter.completionFuture.value.get match {
       case scala.util.Success(_) =>
@@ -778,7 +824,7 @@ private[spark] class DAGScheduler(
     val func2 = func.asInstanceOf[(TaskContext, Iterator[_]) => _]
     eventProcessLoop.post(JobSubmitted(
       jobId, rdd, func2, rdd.partitions.indices.toArray, callSite, listener,
-      SerializationUtils.clone(properties)))
+      SerializationUtils.clone(properties), rdd.getProperties))
     listener.awaitResult()    // Will throw an exception if the job fails
   }
 
@@ -971,7 +1017,8 @@ private[spark] class DAGScheduler(
       partitions: Array[Int],
       callSite: CallSite,
       listener: JobListener,
-      properties: Properties) {
+      properties: Properties,
+      jobProperties: mutable.Map[String, Any] = mutable.Map[String, Any]()) {
     var finalStage: ResultStage = null
     try {
       // New stage creation may throw an exception if, for example, jobs are run on a
@@ -988,7 +1035,7 @@ private[spark] class DAGScheduler(
           messageScheduler.schedule(
             new Runnable {
               override def run(): Unit = eventProcessLoop.post(JobSubmitted(jobId, finalRDD, func,
-                partitions, callSite, listener, properties))
+                partitions, callSite, listener, properties, jobProperties))
             },
             timeIntervalNumTasksCheck,
             TimeUnit.SECONDS
@@ -1024,7 +1071,7 @@ private[spark] class DAGScheduler(
     val stageIds = jobIdToStageIds(jobId).toArray
     val stageInfos = stageIds.flatMap(id => stageIdToStage.get(id).map(_.latestInfo))
     listenerBus.post(
-      SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties))
+      SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties, jobProperties))
     submitStage(finalStage)
   }
 
@@ -1062,7 +1109,7 @@ private[spark] class DAGScheduler(
     val stageIds = jobIdToStageIds(jobId).toArray
     val stageInfos = stageIds.flatMap(id => stageIdToStage.get(id).map(_.latestInfo))
     listenerBus.post(
-      SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties))
+      SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties, finalStage.rdd.getProperties))
     submitStage(finalStage)
 
     // If the whole stage has already finished, tell the listener and remove it
@@ -1230,7 +1277,8 @@ private[spark] class DAGScheduler(
       logInfo(s"Submitting ${tasks.size} missing tasks from $stage (${stage.rdd}) (first 15 " +
         s"tasks are for partitions ${tasks.take(15).map(_.partitionId)})")
       taskScheduler.submitTasks(new TaskSet(
-        tasks.toArray, stage.id, stage.latestInfo.attemptNumber, jobId, properties))
+        tasks.toArray, stage.id, stage.latestInfo.attemptNumber, jobId, properties,
+        Some(stage.rdd.getProperties)))
     } else {
       // Because we posted SparkListenerStageSubmitted earlier, we should mark
       // the stage as completed here in case there are no tasks to run
@@ -2122,8 +2170,10 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
   }
 
   private def doOnReceive(event: DAGSchedulerEvent): Unit = event match {
-    case JobSubmitted(jobId, rdd, func, partitions, callSite, listener, properties) =>
-      dagScheduler.handleJobSubmitted(jobId, rdd, func, partitions, callSite, listener, properties)
+    case JobSubmitted(jobId, rdd, func, partitions, callSite, listener, properties,
+    jobProperties) =>
+      dagScheduler.handleJobSubmitted(jobId, rdd, func,
+        partitions, callSite, listener, properties, jobProperties)
 
     case MapStageSubmitted(jobId, dependency, callSite, listener, properties) =>
       dagScheduler.handleMapStageSubmitted(jobId, dependency, callSite, listener, properties)
@@ -2140,7 +2190,8 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
     case AllJobsCancelled =>
       dagScheduler.doCancelAllJobs()
 
-    case ExecutorAdded(execId, host) =>
+    // TODO: Do we need executorInfo here?
+    case ExecutorAdded(execId, host, executorInfo) =>
       dagScheduler.handleExecutorAdded(execId, host)
 
     case ExecutorLost(execId, reason) =>

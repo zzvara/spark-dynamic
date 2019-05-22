@@ -887,6 +887,8 @@ private[spark] class TaskSchedulerImpl(
       manager
     }
   }
+
+  override def totalSlots(): Int = backend.totalSlots()
 }
 
 

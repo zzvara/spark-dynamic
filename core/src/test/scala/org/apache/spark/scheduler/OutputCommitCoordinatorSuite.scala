@@ -135,7 +135,7 @@ class OutputCommitCoordinatorSuite extends SparkFunSuite with BeforeAndAfter {
   test("Only one of two duplicate commit tasks should commit") {
     val rdd = sc.parallelize(Seq(1), 1)
     sc.runJob(rdd, OutputCommitFunctions(tempDir.getAbsolutePath).commitSuccessfully _,
-      0 until rdd.partitions.size)
+      0 until rdd.partitions.size, None)
     assert(tempDir.list().size === 1)
   }
 

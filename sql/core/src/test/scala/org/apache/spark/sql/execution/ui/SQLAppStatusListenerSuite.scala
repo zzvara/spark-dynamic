@@ -77,10 +77,12 @@ class SQLAppStatusListenerSuite extends SparkFunSuite with SharedSQLContext with
 
   private def createStageInfo(stageId: Int, attemptId: Int): StageInfo = {
     new StageInfo(stageId = stageId,
+      0,
       attemptId = attemptId,
       // The following fields are not used in tests
       name = "",
       numTasks = 0,
+      None,
       rddInfos = Nil,
       parentIds = Nil,
       details = "")

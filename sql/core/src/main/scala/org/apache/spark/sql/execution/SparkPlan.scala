@@ -368,7 +368,7 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
       val p = partsScanned.until(math.min(partsScanned + numPartsToTry, totalParts).toInt)
       val sc = sqlContext.sparkContext
       val res = sc.runJob(childRDD,
-        (it: Iterator[Array[Byte]]) => if (it.hasNext) it.next() else Array.empty[Byte], p)
+        (it: Iterator[Array[Byte]]) => if (it.hasNext) it.next() else Array.empty[Byte], p, None)
 
       buf ++= res.flatMap(decodeUnsafeRows)
 

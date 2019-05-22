@@ -20,6 +20,9 @@ package org.apache.spark.executor
 import scala.collection.JavaConverters._
 import scala.collection.mutable.{ArrayBuffer, LinkedHashMap}
 
+import hu.sztaki.drc.Metrics
+import hu.sztaki.drc.partitioner.RepartitioningInfo
+
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.Logging
@@ -27,7 +30,6 @@ import org.apache.spark.internal.config.Tests.IS_TESTING
 import org.apache.spark.scheduler.AccumulableInfo
 import org.apache.spark.storage.{BlockId, BlockStatus}
 import org.apache.spark.util._
-
 
 /**
  * :: DeveloperApi ::
@@ -43,7 +45,7 @@ import org.apache.spark.util._
  * be sent to the driver.
  */
 @DeveloperApi
-class TaskMetrics private[spark] () extends Serializable {
+class TaskMetrics private[spark] () extends Metrics[TaskMetrics] with Serializable {
   // Each metric is internally represented as an accumulator
   private val _executorDeserializeTime = new LongAccumulator
   private val _executorDeserializeCpuTime = new LongAccumulator
@@ -56,6 +58,11 @@ class TaskMetrics private[spark] () extends Serializable {
   private val _diskBytesSpilled = new LongAccumulator
   private val _peakExecutionMemory = new LongAccumulator
   private val _updatedBlockStatuses = new CollectionAccumulator[(BlockId, BlockStatus)]
+
+  var repartitioningInfo: Option[RepartitioningInfo[TaskMetrics]] = None
+
+  override def writeCharacteristics: DataCharacteristicsAccumulator =
+    shuffleWriteMetrics.dataCharacteristics
 
   /**
    * Time taken on the executor to deserialize this task.
@@ -226,9 +233,13 @@ class TaskMetrics private[spark] () extends Serializable {
     shuffleRead.LOCAL_BYTES_READ -> shuffleReadMetrics._localBytesRead,
     shuffleRead.FETCH_WAIT_TIME -> shuffleReadMetrics._fetchWaitTime,
     shuffleRead.RECORDS_READ -> shuffleReadMetrics._recordsRead,
+    shuffleRead.DATA_CHARACTERISTICS -> shuffleReadMetrics._dataCharacteristics,
     shuffleWrite.BYTES_WRITTEN -> shuffleWriteMetrics._bytesWritten,
     shuffleWrite.RECORDS_WRITTEN -> shuffleWriteMetrics._recordsWritten,
     shuffleWrite.WRITE_TIME -> shuffleWriteMetrics._writeTime,
+    shuffleWrite.REPARTITIONING_TIME -> shuffleWriteMetrics._repartitioningTime,
+    shuffleWrite.INSERTION_TIME -> shuffleWriteMetrics._insertionTime,
+    shuffleWrite.DATA_CHARACTERISTICS -> shuffleWriteMetrics._dataCharacteristics,
     input.BYTES_READ -> inputMetrics._bytesRead,
     input.RECORDS_READ -> inputMetrics._recordsRead,
     output.BYTES_WRITTEN -> outputMetrics._bytesWritten,
@@ -297,12 +308,21 @@ private[spark] object TaskMetrics extends Logging {
     infos.filter(info => info.name.isDefined && info.update.isDefined).foreach { info =>
       val name = info.name.get
       val value = info.update.get
-      if (name == UPDATED_BLOCK_STATUSES) {
-        tm.setUpdatedBlockStatuses(value.asInstanceOf[java.util.List[(BlockId, BlockStatus)]])
-      } else {
-        tm.nameToAccums.get(name).foreach(
-          _.asInstanceOf[LongAccumulator].setValue(value.asInstanceOf[Long])
-        )
+      name match {
+        case UPDATED_BLOCK_STATUSES =>
+          tm.setUpdatedBlockStatuses(value.asInstanceOf[Seq[(BlockId, BlockStatus)]])
+        case shuffleRead.DATA_CHARACTERISTICS =>
+          tm.shuffleReadMetrics.setDataCharacteristics(
+            value.asInstanceOf[Map[Any, Double]]
+          )
+        case shuffleWrite.DATA_CHARACTERISTICS =>
+          tm.shuffleWriteMetrics.setDataCharacteristics(
+            value.asInstanceOf[Map[Any, Double]]
+          )
+        case _ =>
+          tm.nameToAccums.get(name).foreach(
+            _.asInstanceOf[LongAccumulator].setValue(value.asInstanceOf[Long])
+          )
       }
     }
     tm

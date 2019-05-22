@@ -35,7 +35,7 @@ import org.apache.spark.util.Utils
 class ContinuousWriteRDD(var prev: RDD[InternalRow], writerFactory: StreamingDataWriterFactory)
     extends RDD[Unit](prev) {
 
-  override val partitioner = prev.partitioner
+  partitioner = prev.partitioner
 
   override def getPartitions: Array[Partition] = prev.partitions
 

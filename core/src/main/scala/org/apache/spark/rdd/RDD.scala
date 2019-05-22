@@ -140,7 +140,17 @@ abstract class RDD[T: ClassTag](
   protected def getPreferredLocations(split: Partition): Seq[String] = Nil
 
   /** Optionally overridden by subclasses to specify how they are partitioned. */
-  @transient val partitioner: Option[Partitioner] = None
+  var partitioner : Option[Partitioner] = None
+
+  def setPartitioner(partitioner: Option[Partitioner]): Unit = {
+    clearPartitions()
+    this.partitioner = partitioner
+    firstParent.setPartitioner(partitioner)
+  }
+
+  def clearPartitions(): Unit = {
+    partitions_ = null
+  }
 
   // =======================================================================
   // Methods and fields available on all RDDs
@@ -151,6 +161,14 @@ abstract class RDD[T: ClassTag](
 
   /** A unique ID for this RDD (within its SparkContext). */
   val id: Int = sc.newRddId()
+
+  private[rdd] val properties = scala.collection.mutable.Map[String, Any]()
+
+  def addProperty(key: String, value: Any): Option[Any] = {
+    properties.put(key, value)
+  }
+
+  def getProperties: scala.collection.mutable.Map[String, Any] = properties
 
   /** A friendly name for this RDD */
   @transient var name: String = _
@@ -940,7 +958,7 @@ abstract class RDD[T: ClassTag](
    */
   def foreach(f: T => Unit): Unit = withScope {
     val cleanF = sc.clean(f)
-    sc.runJob(this, (iter: Iterator[T]) => iter.foreach(cleanF))
+    sc.runJob(this, (iter: Iterator[T]) => iter.foreach(cleanF), None)
   }
 
   /**
@@ -948,7 +966,7 @@ abstract class RDD[T: ClassTag](
    */
   def foreachPartition(f: Iterator[T] => Unit): Unit = withScope {
     val cleanF = sc.clean(f)
-    sc.runJob(this, (iter: Iterator[T]) => cleanF(iter))
+    sc.runJob(this, (iter: Iterator[T]) => cleanF(iter), None)
   }
 
   /**
@@ -958,7 +976,7 @@ abstract class RDD[T: ClassTag](
    * all the data is loaded into the driver's memory.
    */
   def collect(): Array[T] = withScope {
-    val results = sc.runJob(this, (iter: Iterator[T]) => iter.toArray)
+    val results = sc.runJob(this, (iter: Iterator[T]) => iter.toArray, None)
     Array.concat(results: _*)
   }
 
@@ -973,7 +991,7 @@ abstract class RDD[T: ClassTag](
    */
   def toLocalIterator: Iterator[T] = withScope {
     def collectPartition(p: Int): Array[T] = {
-      sc.runJob(this, (iter: Iterator[T]) => iter.toArray, Seq(p)).head
+      sc.runJob(this, (iter: Iterator[T]) => iter.toArray, Seq(p), None).head
     }
     partitions.indices.iterator.flatMap(i => collectPartition(i))
   }
@@ -1181,7 +1199,7 @@ abstract class RDD[T: ClassTag](
   /**
    * Return the number of elements in the RDD.
    */
-  def count(): Long = sc.runJob(this, Utils.getIteratorSize _).sum
+  def count(): Long = sc.runJob(this, Utils.getIteratorSize _, None).sum
 
   /**
    * Approximate version of count() that returns a potentially incomplete result
@@ -1377,7 +1395,7 @@ abstract class RDD[T: ClassTag](
         }
 
         val p = partsScanned.until(math.min(partsScanned + numPartsToTry, totalParts).toInt)
-        val res = sc.runJob(this, (it: Iterator[T]) => it.take(left).toArray, p)
+        val res = sc.runJob(this, (it: Iterator[T]) => it.take(left).toArray, p, None)
 
         res.foreach(buf ++= _.take(num - buf.size))
         partsScanned += p.size
@@ -1528,7 +1546,7 @@ abstract class RDD[T: ClassTag](
 
   /** A private method for tests, to look at the contents of each partition */
   private[spark] def collectPartitions(): Array[Array[T]] = withScope {
-    sc.runJob(this, (iter: Iterator[T]) => iter.toArray)
+    sc.runJob(this, (iter: Iterator[T]) => iter.toArray, None)
   }
 
   /**

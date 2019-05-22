@@ -84,7 +84,7 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
     array
   }
 
-  override val partitioner = Some(part)
+  partitioner = Some(part)
 
   override def compute(p: Partition, context: TaskContext): Iterator[(K, V)] = {
     val partition = p.asInstanceOf[CoGroupPartition]
@@ -109,7 +109,7 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
         case shuffleDependency: ShuffleDependency[_, _, _] =>
           val metrics = context.taskMetrics().createTempShuffleReadMetrics()
           val iter = SparkEnv.get.shuffleManager
-            .getReader(
+            .getReader[K, V](
               shuffleDependency.shuffleHandle,
               partition.index,
               partition.index + 1,

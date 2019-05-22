@@ -19,6 +19,8 @@ package org.apache.spark.scheduler
 
 import java.util.Properties
 
+import scala.collection.mutable
+
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.{AccumulatorV2, CallSite}
@@ -39,7 +41,8 @@ private[scheduler] case class JobSubmitted(
     partitions: Array[Int],
     callSite: CallSite,
     listener: JobListener,
-    properties: Properties = null)
+    properties: Properties = null,
+    jobProperties: mutable.Map[String, Any] = mutable.Map[String, Any]())
   extends DAGSchedulerEvent
 
 /** A map stage as submitted to run as a separate job */
@@ -79,7 +82,8 @@ private[scheduler] case class CompletionEvent(
     taskInfo: TaskInfo)
   extends DAGSchedulerEvent
 
-private[scheduler] case class ExecutorAdded(execId: String, host: String) extends DAGSchedulerEvent
+private[scheduler] case class ExecutorAdded(execId: String, host: String, totalSlots: Int) extends
+  DAGSchedulerEvent
 
 private[scheduler] case class ExecutorLost(execId: String, reason: ExecutorLossReason)
   extends DAGSchedulerEvent

@@ -943,7 +943,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
           }
           buf
         } : Seq[V]
-        val res = self.context.runJob(self, process, Array(index))
+        val res = self.context.runJob(self, process, Array(index), None)
         res(0)
       case None =>
         self.filter(_._1 == key).map(_._2).collect()

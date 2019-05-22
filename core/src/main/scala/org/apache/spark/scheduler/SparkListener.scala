@@ -20,16 +20,14 @@ package org.apache.spark.scheduler
 import java.util.Properties
 import javax.annotation.Nullable
 
-import scala.collection.Map
+import scala.collection.{Map, mutable}
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-
-import org.apache.spark.{SparkConf, TaskEndReason}
+import org.apache.spark.TaskEndReason
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.executor.{ExecutorMetrics, TaskMetrics}
 import org.apache.spark.scheduler.cluster.ExecutorInfo
 import org.apache.spark.storage.{BlockManagerId, BlockUpdatedInfo}
-import org.apache.spark.ui.SparkUI
 
 @DeveloperApi
 @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, include = JsonTypeInfo.As.PROPERTY, property = "Event")
@@ -71,7 +69,8 @@ case class SparkListenerJobStart(
     jobId: Int,
     time: Long,
     stageInfos: Seq[StageInfo],
-    properties: Properties = null)
+    properties: Properties = null,
+    jobProperties: mutable.Map[String, Any] = mutable.Map[String, Any]())
   extends SparkListenerEvent {
   // Note: this is here for backwards-compatibility with older versions of this event which
   // only stored stageIds and not StageInfos:
@@ -110,7 +109,11 @@ case class SparkListenerExecutorAdded(time: Long, executorId: String, executorIn
   extends SparkListenerEvent
 
 @DeveloperApi
-case class SparkListenerExecutorRemoved(time: Long, executorId: String, reason: String)
+case class SparkListenerExecutorRemoved(
+    time: Long,
+    executorId: String,
+    reason: String,
+    executorInfo: ExecutorInfo)
   extends SparkListenerEvent
 
 @DeveloperApi
