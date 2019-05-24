@@ -122,7 +122,7 @@ class StreamingRepartitioningTrackerMaster(
         }
       }
 
-      val outputStreams = StreamingContext.getActive().get.graph.getOutputStreams()
+      // val outputStreams = StreamingContext.getActive().get.graph.getOutputStreams()
 
       if (!isInitialized) {
         StreamingUtils.initialize(StreamingContext.getActive().get.graph.getOutputStreams())

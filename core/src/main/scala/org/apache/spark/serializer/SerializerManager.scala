@@ -89,22 +89,14 @@ private[spark] class SerializerManager(
   // result is streaming job based on `Receiver` mode can not run on Spark 2.x properly. It may be
   // a rational choice to close `kryo auto pick` feature for streaming in the first step.
   def getSerializer(ct: ClassTag[_], autoPick: Boolean): Serializer = {
-    if (autoPick && canUseKryo(ct)) {
-      kryoSerializer
-    } else {
-      defaultSerializer
-    }
+    defaultSerializer
   }
 
   /**
    * Pick the best serializer for shuffling an RDD of key-value pairs.
    */
   def getSerializer(keyClassTag: ClassTag[_], valueClassTag: ClassTag[_]): Serializer = {
-    if (canUseKryo(keyClassTag) && canUseKryo(valueClassTag)) {
-      kryoSerializer
-    } else {
-      defaultSerializer
-    }
+    defaultSerializer
   }
 
   private def shouldCompress(blockId: BlockId): Boolean = {

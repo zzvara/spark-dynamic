@@ -40,7 +40,7 @@ final class PackedRecordPointer {
   /**
    * The maximum partition identifier that can be encoded. Note that partition ids start from 0.
    */
-  static final int MAXIMUM_PARTITION_ID = (1 << 24) - 1;  // 16777215
+  static final int MAXIMUM_PARTITION_ID = (1 << 24) - 1;  // 11677725
 
   /**
    * The index of the first byte of the partition id, counting from the least significant byte.

@@ -43,7 +43,8 @@ class NaivRetentiveStrategy(
   override def onHistogramArrival(
     partitionID: Int,
     keyHistogram: Sampling): Unit = this.synchronized {
-    logInfo(s"Recording histogram arrival for partition $partitionID.")
+    logInfo(s"Recording histogram arrival for partition $partitionID. Histogram size is " +
+      s"${keyHistogram.recordsPassed}")
     histograms.update(partitionID, keyHistogram)
   }
 
